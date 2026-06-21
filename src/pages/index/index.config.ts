@@ -1,3 +1,3 @@
 export default typeof definePageConfig === 'function'
-  ? definePageConfig({ navigationBarTitleText: 'AI 模型网关' })
-  : { navigationBarTitleText: 'AI 模型网关' }
+  ? definePageConfig({ navigationBarTitleText: 'AnyDoor - AI 模型网关' })
+  : { navigationBarTitleText: 'AnyDoor - AI 模型网关' }

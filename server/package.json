@@ -1,8 +1,8 @@
 {
-  "name": "server",
+  "name": "anydoor-server",
   "version": "1.0.0",
   "private": true,
-  "description": "NestJS server application",
+  "description": "AnyDoor Server - NestJS 后端网关",
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",

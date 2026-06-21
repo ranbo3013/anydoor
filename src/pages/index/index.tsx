@@ -773,7 +773,7 @@ export default function Index() {
       <View className="bg-slate-800 border-b border-slate-700 px-4 pt-12 pb-3">
         <View className="flex flex-row items-center gap-2">
           <Activity size={20} color="#10b981" />
-          <Text className="block text-lg font-bold text-slate-200">AI 模型网关</Text>
+          <Text className="block text-lg font-bold text-slate-200">AnyDoor</Text>
         </View>
         <Text className="block text-xs text-slate-500 mt-1">本地代理：CLI 工具 → 模型供应商</Text>
       </View>
