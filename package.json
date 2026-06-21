@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm exec concurrently --kill-others-on-fail --kill-signal SIGKILL -n lint,tsc,web,weapp,tt,server -c red,blue,green,yellow,cyan,magenta \"pnpm lint:build\" \"pnpm tsc\" \"pnpm build:web\" \"pnpm build:weapp\" \"pnpm build:tt\" \"pnpm build:server\"",
     "build:pack": "pnpm exec concurrently --kill-others-on-fail --kill-signal SIGKILL -n weapp,tt -c yellow,cyan \"pnpm build:weapp\" \"pnpm build:tt\"",
-    "build:server": "pnpm --filter server build",
+    "build:server": "cd server && pnpm build",
     "build:tt": "taro build --type tt",
     "build:weapp": "taro build --type weapp",
     "build:web": "taro build --type h5",
@@ -15,7 +15,7 @@
     "build:desktop": "pnpm build:web && pnpm build:server && pnpm build:electron",
     "dev": "pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server -c blue,green \"pnpm dev:web\" \"pnpm dev:server\"",
     "dev:desktop": "pnpm build:electron && pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server,electron -c blue,green,yellow \"pnpm dev:web\" \"pnpm dev:server\" \"npx electron .\"",
-    "dev:server": "pnpm --filter server dev",
+    "dev:server": "cd server && pnpm dev",
     "dev:tt": "taro build --type tt --watch",
     "dev:weapp": "taro build --type weapp --watch",
     "dev:web": "taro build --type h5 --watch",
