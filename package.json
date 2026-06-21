@@ -131,7 +131,7 @@
     ],
     "extraResources": [
       {
-        "from": "dist",
+        "from": "dist-web",
         "to": "frontend",
         "filter": ["**/*"]
       },
