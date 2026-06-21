@@ -126,17 +126,22 @@
     },
     "files": [
       "electron/dist/**/*",
-      "dist/**/*",
-      "!node_modules"
+      "!node_modules",
+      "!dist"
     ],
     "extraResources": [
       {
-        "from": "server-pack",
-        "to": "server",
+        "from": "dist",
+        "to": "frontend",
         "filter": ["**/*"]
       },
       {
-        "from": "electron/dist/assets",
+        "from": "server-pack",
+        "to": "server",
+        "filter": ["**/*", "!**/node_modules/.cache"]
+      },
+      {
+        "from": "electron/assets",
         "to": "assets",
         "filter": ["**/*"]
       }

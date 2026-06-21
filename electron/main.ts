@@ -4,34 +4,69 @@ import {
   Tray,
   Menu,
   nativeImage,
+  dialog,
 } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
 import * as fs from 'fs';
+import * as os from 'os';
 
 // ─── 配置 ───────────────────────────────────────────
 const SERVER_PORT = 3000;
 const isDev = !app.isPackaged;
 
+// ─── 日志系统 ────────────────────────────────────────
+const LOG_DIR = path.join(os.homedir(), '.anydoor', 'logs');
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+const LOG_FILE = path.join(LOG_DIR, 'anydoor.log');
+
+function log(message: string) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${message}\n`;
+  fs.appendFileSync(LOG_FILE, line);
+  console.log(line.trim());
+}
+
+function logError(message: string, err?: any) {
+  const timestamp = new Date().toISOString();
+  const detail = err ? ` | ${err.stack || err.message || err}` : '';
+  const line = `[${timestamp}] [ERROR] ${message}${detail}\n`;
+  fs.appendFileSync(LOG_FILE, line);
+  console.error(line.trim());
+}
+
+log('=== AnyDoor Starting ===');
+log(`isDev: ${isDev}`);
+log(`appPath: ${app.getAppPath()}`);
+log(`resourcesPath: ${process.resourcesPath}`);
+log(`cwd: ${process.cwd()}`);
+
 // ─── 全局引用 ────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let serverProcess: ReturnType<typeof import('child_process').spawn> | null =
-  null;
+let serverProcess: ReturnType<typeof import('child_process').spawn> | null = null;
 
 // ─── 工具函数 ────────────────────────────────────────
 function getServerDir(): string {
   if (isDev) {
     return path.join(__dirname, '..', 'server');
   }
-  return path.join(process.resourcesPath, 'server');
+  // 生产模式：从 resources/server 读取
+  const resourceDir = path.join(process.resourcesPath, 'server');
+  log(`Server dir: ${resourceDir}`);
+  return resourceDir;
 }
 
-function getFrontendPath(): string {
+function getFrontendDir(): string {
   if (isDev) {
-    return path.join(__dirname, '..', 'dist', 'index.html');
+    return path.join(__dirname, '..', 'dist');
   }
-  return path.join(process.resourcesPath, 'frontend', 'index.html');
+  // 生产模式：从 resources/frontend 读取
+  const resourceDir = path.join(process.resourcesPath, 'frontend');
+  log(`Frontend dir: ${resourceDir}`);
+  return resourceDir;
 }
 
 function getTrayIconPath(): string {
@@ -52,6 +87,7 @@ function waitUntilServerReady(
         `http://localhost:${port}/api/gateway/status`,
         (res) => {
           if (res.statusCode === 200) {
+            log('Server health check passed');
             resolve();
           } else {
             retry();
@@ -83,8 +119,7 @@ function waitUntilServerReady(
 function startServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (isDev) {
-      // 开发模式：假设 server 已经在运行（coze dev）
-      console.log('[AnyDoor] Dev mode: assuming server is already running');
+      log('Dev mode: assuming server is already running');
       resolve();
       return;
     }
@@ -94,8 +129,20 @@ function startServer(): Promise<void> {
     const serverDir = getServerDir();
     const serverEntry = path.join(serverDir, 'main.js');
 
-    console.log('[AnyDoor] Starting server from:', serverEntry);
-    console.log('[AnyDoor] Server dir:', serverDir);
+    log(`Server entry: ${serverEntry}`);
+    log(`Server dir exists: ${fs.existsSync(serverDir)}`);
+    log(`Server entry exists: ${fs.existsSync(serverEntry)}`);
+
+    // 检查 node_modules 是否存在
+    const nodeModules = path.join(serverDir, 'node_modules');
+    log(`node_modules exists: ${fs.existsSync(nodeModules)}`);
+
+    if (!fs.existsSync(serverEntry)) {
+      const msg = `Server entry not found: ${serverEntry}`;
+      logError(msg);
+      reject(new Error(msg));
+      return;
+    }
 
     const env = { ...process.env, NODE_ENV: 'production', PORT: String(SERVER_PORT) };
     serverProcess = spawn('node', [serverEntry], {
@@ -106,16 +153,20 @@ function startServer(): Promise<void> {
     });
 
     serverProcess.stdout?.on('data', (data: Buffer) => {
-      console.log('[Server]', data.toString().trim());
+      log(`[Server stdout] ${data.toString().trim()}`);
     });
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      console.error('[Server]', data.toString().trim());
+      logError(`[Server stderr] ${data.toString().trim()}`);
     });
 
     serverProcess.on('error', (err: Error) => {
-      console.error('[AnyDoor] Failed to start server:', err);
+      logError('Failed to spawn server process', err);
       reject(err);
+    });
+
+    serverProcess.on('exit', (code: number | null, signal: string | null) => {
+      log(`Server process exited: code=${code}, signal=${signal}`);
     });
 
     // 等待服务就绪
@@ -128,7 +179,6 @@ function startServer(): Promise<void> {
 // ─── 创建托盘图标 ───────────────────────────────────
 function createTrayIcon(): Electron.NativeImage {
   const iconPath = getTrayIconPath();
-  // 尝试加载文件图标
   if (fs.existsSync(iconPath)) {
     return nativeImage.createFromPath(iconPath);
   }
@@ -158,26 +208,23 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: '网关状态',
+      label: '网关运行中',
       enabled: false,
     },
     {
-      label: '  ● 运行中',
-      type: 'normal',
-      enabled: false,
-    },
-    { type: 'separator' },
-    {
-      label: '代理地址',
-      enabled: false,
-    },
-    {
-      label: '  http://localhost:3000/api/gateway/proxy',
+      label: '代理: localhost:3000',
       click: () => {
         require('electron').clipboard.writeText('http://localhost:3000/api/gateway/proxy');
       },
     },
     { type: 'separator' },
+    {
+      label: '查看日志',
+      click: () => {
+        const { shell } = require('electron');
+        shell.showItemInFolder(LOG_FILE);
+      },
+    },
     {
       label: '退出 AnyDoor',
       click: () => {
@@ -213,8 +260,32 @@ function createMainWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5000');
   } else {
-    const frontendPath = getFrontendPath();
-    mainWindow.loadFile(frontendPath);
+    const frontendDir = getFrontendDir();
+    const indexPath = path.join(frontendDir, 'index.html');
+    log(`Loading frontend: ${indexPath}`);
+    log(`Frontend index exists: ${fs.existsSync(indexPath)}`);
+
+    if (fs.existsSync(indexPath)) {
+      mainWindow.loadFile(indexPath);
+    } else {
+      // 前端文件不存在时显示错误页面
+      logError(`Frontend not found at: ${indexPath}`);
+      mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+        <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:system-ui;background:#1a1a2e;color:#eee">
+          <div style="text-align:center">
+            <h1>AnyDoor 启动失败</h1>
+            <p>前端文件未找到</p>
+            <p style="color:#888;font-size:12px">路径: ${indexPath}</p>
+            <p style="color:#888;font-size:12px">日志: ${LOG_FILE}</p>
+          </div>
+        </body></html>
+      `)}`);
+    }
+  }
+
+  // 开发模式打开 DevTools
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
   }
 
   // 窗口关闭时隐藏到托盘，而非退出
@@ -233,19 +304,40 @@ function createMainWindow() {
 // ─── 应用生命周期 ───────────────────────────────────
 app.whenReady().then(async () => {
   try {
+    log('App ready, starting server...');
+
     // 1. 启动后端服务
     await startServer();
-    console.log('[AnyDoor] Server is ready');
+    log('Server is ready');
 
     // 2. 创建系统托盘
     createTray();
+    log('Tray created');
 
     // 3. 创建主窗口
     createMainWindow();
-  } catch (err) {
-    console.error('[AnyDoor] Failed to start:', err);
+    log('Window created');
+  } catch (err: any) {
+    logError('Failed to start', err);
+
+    // 显示错误弹窗
+    dialog.showErrorBox(
+      'AnyDoor 启动失败',
+      `${err.message || err}\n\n日志文件: ${LOG_FILE}`,
+    );
+
     app.quit();
   }
+});
+
+// 捕获未处理的异常
+process.on('uncaughtException', (err) => {
+  logError('Uncaught exception', err);
+  dialog.showErrorBox('AnyDoor 异常', `${err.message}\n\n日志: ${LOG_FILE}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logError('Unhandled rejection', reason);
 });
 
 // macOS: 点击 dock 图标时重新显示窗口
@@ -258,10 +350,9 @@ app.on('activate', () => {
 });
 
 // 退出前清理
-let isQuitting = false;
 app.on('before-quit', () => {
-  isQuitting = true;
   (app as any).isQuitting = true;
+  log('App quitting, cleaning up...');
   if (serverProcess) {
     serverProcess.kill();
     serverProcess = null;
@@ -270,5 +361,4 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   // macOS 上有托盘，不做任何操作
-  // 只有用户从托盘选择"退出"才真正退出
 });
