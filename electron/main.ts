@@ -46,7 +46,7 @@ log(`cwd: ${process.cwd()}`);
 // ─── 全局引用 ────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let serverProcess: ReturnType<typeof import('child_process').spawn> | null = null;
+let serverProcess: ReturnType<typeof import('child_process').fork> | null = null;
 
 // ─── 工具函数 ────────────────────────────────────────
 function getServerDir(): string {
@@ -124,8 +124,9 @@ function startServer(): Promise<void> {
       return;
     }
 
-    // 生产模式：启动内置的 NestJS 服务
-    const { spawn } = require('child_process') as typeof import('child_process');
+    // 生产模式：用 fork + ELECTRON_RUN_AS_NODE 启动 NestJS 服务
+    // 关键：打包后的 App 里没有 node 命令，必须用 Electron 自带的 Node.js 运行时
+    const { fork } = require('child_process') as typeof import('child_process');
     const serverDir = getServerDir();
     const serverEntry = path.join(serverDir, 'main.js');
 
@@ -144,12 +145,23 @@ function startServer(): Promise<void> {
       return;
     }
 
-    const env = { ...process.env, NODE_ENV: 'production', PORT: String(SERVER_PORT) };
-    serverProcess = spawn('node', [serverEntry], {
+    // 使用 ELECTRON_RUN_AS_NODE=1 让 Electron 以纯 Node.js 模式运行
+    // 这样 fork 出的子进程不会启动 Electron 窗口，只运行 NestJS 服务
+    const env = {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      NODE_ENV: 'production',
+      PORT: String(SERVER_PORT),
+    };
+
+    log(`Forking server with ELECTRON_RUN_AS_NODE=1`);
+    log(`process.execPath: ${process.execPath}`);
+
+    serverProcess = fork(serverEntry, [], {
       env,
       cwd: serverDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: false,
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+      // 不继承 Electron 的主进程行为
     });
 
     serverProcess.stdout?.on('data', (data: Buffer) => {
@@ -157,16 +169,23 @@ function startServer(): Promise<void> {
     });
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      logError(`[Server stderr] ${data.toString().trim()}`);
+      const msg = data.toString().trim();
+      // NestJS 启动时有些 warn 是正常的，不全部当错误
+      if (msg.includes('Error') || msg.includes('error') || msg.includes('EADDRINUSE')) {
+        logError(`[Server stderr] ${msg}`);
+      } else {
+        log(`[Server stderr] ${msg}`);
+      }
     });
 
     serverProcess.on('error', (err: Error) => {
-      logError('Failed to spawn server process', err);
+      logError('Failed to fork server process', err);
       reject(err);
     });
 
     serverProcess.on('exit', (code: number | null, signal: string | null) => {
       log(`Server process exited: code=${code}, signal=${signal}`);
+      serverProcess = null;
     });
 
     // 等待服务就绪
