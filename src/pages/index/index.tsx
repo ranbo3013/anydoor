@@ -81,7 +81,7 @@ function ProviderForm({ provider, onSave, onCancel }: {
         try {
           const res = await Network.request({ url: `/api/gateway/providers/${result.id}/test`, method: "POST" })
           console.log("[ProviderForm] test result:", res.data)
-          setTestResult(res.data?.data || { success: false, message: "Unknown result" })
+          setTestResult(res.data?.data || { success: false, message: "未知结果" })
         } catch (err: any) {
           setTestResult({ success: false, message: err.message })
         }
@@ -93,7 +93,7 @@ function ProviderForm({ provider, onSave, onCancel }: {
     try {
       const res = await Network.request({ url: `/api/gateway/providers/${savedProviderId}/test`, method: "POST" })
       console.log("[ProviderForm] test result:", res.data)
-      setTestResult(res.data?.data || { success: false, message: "Unknown result" })
+      setTestResult(res.data?.data || { success: false, message: "未知结果" })
     } catch (err: any) {
       setTestResult({ success: false, message: err.message })
     }
@@ -121,14 +121,14 @@ function ProviderForm({ provider, onSave, onCancel }: {
   return (
     <View className="flex flex-col gap-4">
       <View className="flex flex-col gap-2">
-        <Label>Name</Label>
+        <Label>名称</Label>
         <View className="bg-slate-700 rounded-md px-3 py-2">
-          <Input className="w-full bg-transparent text-slate-200" placeholder="e.g. Agnes, DeepSeek" value={name} onInput={e => setName(e.detail.value)} />
+          <Input className="w-full bg-transparent text-slate-200" placeholder="例如 Agnes, DeepSeek" value={name} onInput={e => setName(e.detail.value)} />
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>API Format</Label>
+        <Label>API 格式</Label>
         <View className="flex flex-row gap-2">
           {apiFormats.map(f => (
             <View key={f.value} onClick={() => setType(f.value)} className={`px-3 py-2 rounded-md ${type === f.value ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-400"}`}>
@@ -139,21 +139,21 @@ function ProviderForm({ provider, onSave, onCancel }: {
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>Base URL</Label>
+        <Label>接口地址</Label>
         <View className="bg-slate-700 rounded-md px-3 py-2">
           <Input className="w-full bg-transparent text-slate-200" placeholder="https://api.example.com/v1" value={baseUrl} onInput={e => setBaseUrl(e.detail.value)} />
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>API Key</Label>
+        <Label>API 密钥</Label>
         <View className="bg-slate-700 rounded-md px-3 py-2">
           <Input className="w-full bg-transparent text-slate-200" placeholder="sk-xxx" value={apiKey} onInput={e => setApiKey(e.detail.value)} type="safe-password" />
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>Models (comma separated)</Label>
+        <Label>模型列表（逗号分隔）</Label>
         <View className="bg-slate-700 rounded-md px-3 py-2">
           <Input className="w-full bg-transparent text-slate-200" placeholder="agnes-flash, deepseek-chat" value={models} onInput={e => setModels(e.detail.value)} />
         </View>
@@ -167,20 +167,20 @@ function ProviderForm({ provider, onSave, onCancel }: {
 
       <View className="flex flex-row gap-3 mt-2">
         <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={onCancel}>
-          <Text>Cancel</Text>
+          <Text>取消</Text>
         </Button>
         <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={handleTest} disabled={testing || !baseUrl || !apiKey}>
-          <Text>{testing ? "Testing..." : "Test"}</Text>
+          <Text>{testing ? "测试中..." : "测试"}</Text>
         </Button>
         <Button className="flex-1 bg-emerald-500 text-slate-900" onClick={handleSave} disabled={!name || !baseUrl || !apiKey}>
-          <Text>Save</Text>
+          <Text>保存</Text>
         </Button>
       </View>
     </View>
   )
 }
 
-// ========== Dashboard Tab ==========
+// ========== 仪表盘 ==========
 function DashboardTab({ status, providers, routes }: {
   status: GatewayStatus | null
   providers: Provider[]
@@ -207,43 +207,43 @@ function DashboardTab({ status, providers, routes }: {
 
   return (
     <View className="flex flex-col gap-4">
-      {/* Status Card */}
+      {/* 状态卡片 */}
       <Card className="bg-slate-800 border-slate-700">
         <CardContent className="p-4">
           <View className="flex flex-row items-center gap-3 mb-4">
             <View className={`w-3 h-3 rounded-full ${status?.running ? "bg-emerald-500" : "bg-red-500"}`} />
             <Text className="block text-lg font-semibold text-slate-200">
-              Gateway {status?.running ? "Running" : "Stopped"}
+              网关{status?.running ? "运行中" : "已停止"}
             </Text>
           </View>
           <View className="flex flex-row gap-4">
             <View className="flex-1 bg-slate-700 rounded-lg p-3">
-              <Text className="block text-xs text-slate-400 mb-1">Total Requests</Text>
+              <Text className="block text-xs text-slate-400 mb-1">总请求数</Text>
               <Text className="block text-xl font-bold text-slate-200">{status?.totalRequests || 0}</Text>
             </View>
             <View className="flex-1 bg-slate-700 rounded-lg p-3">
-              <Text className="block text-xs text-slate-400 mb-1">Active Providers</Text>
+              <Text className="block text-xs text-slate-400 mb-1">活跃供应商</Text>
               <Text className="block text-xl font-bold text-emerald-400">{enabledProviders.length}</Text>
             </View>
             <View className="flex-1 bg-slate-700 rounded-lg p-3">
-              <Text className="block text-xs text-slate-400 mb-1">Active Routes</Text>
+              <Text className="block text-xs text-slate-400 mb-1">活跃路由</Text>
               <Text className="block text-xl font-bold text-blue-400">{enabledRoutes.length}</Text>
             </View>
           </View>
         </CardContent>
       </Card>
 
-      {/* Route Map */}
+      {/* 路由地图 */}
       <Card className="bg-slate-800 border-slate-700">
         <CardHeader className="p-4 pb-2">
           <View className="flex flex-row items-center gap-2">
             <Route size={18} color="#10b981" />
-            <Text className="block text-base font-semibold text-slate-200">Route Map</Text>
+            <Text className="block text-base font-semibold text-slate-200">路由地图</Text>
           </View>
         </CardHeader>
         <CardContent className="p-4 pt-2">
           {enabledRoutes.length === 0 ? (
-            <Text className="block text-sm text-slate-500">No routes configured. Go to Routes tab to set up.</Text>
+            <Text className="block text-sm text-slate-500">暂无路由配置，请前往「路由」标签页设置</Text>
           ) : (
             <View className="flex flex-col gap-2">
               {enabledRoutes.map(route => (
@@ -269,22 +269,22 @@ function DashboardTab({ status, providers, routes }: {
         </CardContent>
       </Card>
 
-      {/* Quick Setup */}
+      {/* 配置指南 */}
       <Card className="bg-slate-800 border-slate-700">
         <CardHeader className="p-4 pb-2">
           <View className="flex flex-row items-center gap-2">
             <Settings size={18} color="#f59e0b" />
-            <Text className="block text-base font-semibold text-slate-200">CLI Setup Guide</Text>
+            <Text className="block text-base font-semibold text-slate-200">CLI 配置指南</Text>
           </View>
         </CardHeader>
         <CardContent className="p-4 pt-2">
-          <Text className="block text-sm text-slate-400 mb-3">Configure your CLI tools to connect through the gateway:</Text>
+          <Text className="block text-sm text-slate-400 mb-3">将你的 CLI 工具配置为通过网关代理连接：</Text>
           <View className="bg-slate-900 rounded-lg p-3 mb-2">
             <Text className="block text-xs text-amber-400 mb-1">Codex (~/.codex/config.toml)</Text>
             <Text className="block text-xs text-slate-300 font-mono">base_url = &quot;http://localhost:3000/api/gateway/proxy&quot;{"\n"}wire_api = &quot;responses&quot;</Text>
           </View>
           <View className="bg-slate-900 rounded-lg p-3 mb-2">
-            <Text className="block text-xs text-amber-400 mb-1">Claude Code (environment variables)</Text>
+            <Text className="block text-xs text-amber-400 mb-1">Claude Code（环境变量）</Text>
             <Text className="block text-xs text-slate-300 font-mono">ANTHROPIC_BASE_URL=http://localhost:3000/api/gateway/proxy{"\n"}ANTHROPIC_API_KEY=gateway-proxy-key</Text>
           </View>
         </CardContent>
@@ -293,7 +293,7 @@ function DashboardTab({ status, providers, routes }: {
   )
 }
 
-// ========== Providers Tab ==========
+// ========== 供应商 ==========
 function ProvidersTab({ providers, refresh }: {
   providers: Provider[]
   refresh: () => void
@@ -349,11 +349,11 @@ function ProvidersTab({ providers, refresh }: {
   return (
     <View className="flex flex-col gap-3">
       <View className="flex flex-row items-center justify-between">
-        <Text className="block text-base font-semibold text-slate-200">Model Providers</Text>
+        <Text className="block text-base font-semibold text-slate-200">模型供应商</Text>
         <Button className="bg-emerald-500 text-slate-900" size="sm" onClick={() => { setEditingProvider(undefined); setShowDialog(true) }}>
           <View className="flex flex-row items-center gap-1">
             <Plus size={14} color="#0f172a" />
-            <Text className="text-xs">Add</Text>
+            <Text className="text-xs">添加</Text>
           </View>
         </Button>
       </View>
@@ -362,8 +362,8 @@ function ProvidersTab({ providers, refresh }: {
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-8 items-center">
             <WifiOff size={32} color="#475569" />
-            <Text className="block text-sm text-slate-500 mt-3">No providers configured</Text>
-            <Text className="block text-xs text-slate-600 mt-1">Add a provider to get started</Text>
+            <Text className="block text-sm text-slate-500 mt-3">暂无供应商配置</Text>
+            <Text className="block text-xs text-slate-600 mt-1">添加一个供应商以开始使用</Text>
           </CardContent>
         </Card>
       ) : (
@@ -377,17 +377,17 @@ function ProvidersTab({ providers, refresh }: {
               </View>
               <View className="flex flex-col gap-2 mb-3">
                 <View className="flex flex-row items-center gap-2">
-                  <Text className="block text-xs text-slate-500 w-16">Format</Text>
+                  <Text className="block text-xs text-slate-500 w-16">格式</Text>
                   <Badge variant="outline" className="border-slate-600">
                     <Text className="text-xs text-slate-400">{provider.type === "openai_chat" ? "Chat Completions" : provider.type === "openai_responses" ? "Responses" : "Anthropic"}</Text>
                   </Badge>
                 </View>
                 <View className="flex flex-row items-center gap-2">
-                  <Text className="block text-xs text-slate-500 w-16">Base URL</Text>
+                  <Text className="block text-xs text-slate-500 w-16">接口地址</Text>
                   <Text className="block text-xs text-slate-400 flex-1" numberOfLines={1}>{provider.baseUrl}</Text>
                 </View>
                 <View className="flex flex-row items-center gap-2">
-                  <Text className="block text-xs text-slate-500 w-16">Models</Text>
+                  <Text className="block text-xs text-slate-500 w-16">模型</Text>
                   <View className="flex flex-row flex-wrap gap-1 flex-1">
                     {provider.models.map(m => (
                       <Badge key={m} variant="secondary" className="bg-slate-700 text-slate-300">
@@ -399,11 +399,11 @@ function ProvidersTab({ providers, refresh }: {
               </View>
               <View className="flex flex-row gap-2">
                 <Button variant="outline" size="sm" className="border-slate-600 text-slate-400 flex-1" onClick={() => { setEditingProvider(provider); setShowDialog(true) }}>
-                  <Text className="text-xs">Edit</Text>
+                  <Text className="text-xs">编辑</Text>
                 </Button>
                 <Button variant="outline" size="sm" className="border-red-800 text-red-400 flex-1" onClick={() => handleDelete(provider.id)}>
                   <Trash2 size={12} color="#f87171" />
-                  <Text className="text-xs text-red-400">Delete</Text>
+                  <Text className="text-xs text-red-400">删除</Text>
                 </Button>
               </View>
             </CardContent>
@@ -415,7 +415,7 @@ function ProvidersTab({ providers, refresh }: {
         <DialogContent className="bg-slate-800 border-slate-700">
           <DialogHeader>
             <DialogTitle>
-              <Text className="text-slate-200">{editingProvider ? "Edit Provider" : "Add Provider"}</Text>
+              <Text className="text-slate-200">{editingProvider ? "编辑供应商" : "添加供应商"}</Text>
             </DialogTitle>
           </DialogHeader>
           <ProviderForm
@@ -429,7 +429,7 @@ function ProvidersTab({ providers, refresh }: {
   )
 }
 
-// ========== Routes Tab ==========
+// ========== 路由 ==========
 function RoutesTab({ routes, providers, refresh }: {
   routes: RouteConfig[]
   providers: Provider[]
@@ -438,7 +438,7 @@ function RoutesTab({ routes, providers, refresh }: {
   const [showDialog, setShowDialog] = useState(false)
   const [editingRoute, setEditingRoute] = useState<RouteConfig | undefined>(undefined)
 
-  // Form state
+  // 表单状态
   const [cliTool, setCliTool] = useState("codex")
   const [providerId, setProviderId] = useState("")
   const [model, setModel] = useState("")
@@ -524,11 +524,11 @@ function RoutesTab({ routes, providers, refresh }: {
   return (
     <View className="flex flex-col gap-3">
       <View className="flex flex-row items-center justify-between">
-        <Text className="block text-base font-semibold text-slate-200">Routes</Text>
+        <Text className="block text-base font-semibold text-slate-200">路由配置</Text>
         <Button className="bg-emerald-500 text-slate-900" size="sm" onClick={openAdd}>
           <View className="flex flex-row items-center gap-1">
             <Plus size={14} color="#0f172a" />
-            <Text className="text-xs">Add</Text>
+            <Text className="text-xs">添加</Text>
           </View>
         </Button>
       </View>
@@ -537,8 +537,8 @@ function RoutesTab({ routes, providers, refresh }: {
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-8 items-center">
             <Route size={32} color="#475569" />
-            <Text className="block text-sm text-slate-500 mt-3">No routes configured</Text>
-            <Text className="block text-xs text-slate-600 mt-1">Add a route to connect CLI tools to providers</Text>
+            <Text className="block text-sm text-slate-500 mt-3">暂无路由配置</Text>
+            <Text className="block text-xs text-slate-600 mt-1">添加路由以将 CLI 工具连接到模型供应商</Text>
           </CardContent>
         </Card>
       ) : (
@@ -557,18 +557,18 @@ function RoutesTab({ routes, providers, refresh }: {
                 <Switch checked={route.enabled} onCheckedChange={() => handleToggle(route)} />
               </View>
               <View className="flex flex-row items-center gap-2 mb-3">
-                <Text className="block text-xs text-slate-500">Model:</Text>
+                <Text className="block text-xs text-slate-500">模型：</Text>
                 <Badge variant="outline" className="border-slate-600 text-slate-400">
                   <Text className="text-xs">{route.model}</Text>
                 </Badge>
               </View>
               <View className="flex flex-row gap-2">
                 <Button variant="outline" size="sm" className="border-slate-600 text-slate-400 flex-1" onClick={() => openEdit(route)}>
-                  <Text className="text-xs">Edit</Text>
+                  <Text className="text-xs">编辑</Text>
                 </Button>
                 <Button variant="outline" size="sm" className="border-red-800 text-red-400 flex-1" onClick={() => handleDelete(route.id)}>
                   <Trash2 size={12} color="#f87171" />
-                  <Text className="text-xs text-red-400">Delete</Text>
+                  <Text className="text-xs text-red-400">删除</Text>
                 </Button>
               </View>
             </CardContent>
@@ -580,12 +580,12 @@ function RoutesTab({ routes, providers, refresh }: {
         <DialogContent className="bg-slate-800 border-slate-700">
           <DialogHeader>
             <DialogTitle>
-              <Text className="text-slate-200">{editingRoute ? "Edit Route" : "Add Route"}</Text>
+              <Text className="text-slate-200">{editingRoute ? "编辑路由" : "添加路由"}</Text>
             </DialogTitle>
           </DialogHeader>
           <View className="flex flex-col gap-4">
             <View className="flex flex-col gap-2">
-              <Label>CLI Tool</Label>
+              <Label>CLI 工具</Label>
               <View className="flex flex-row gap-2">
                 {cliTools.map(t => (
                   <View key={t.value} onClick={() => setCliTool(t.value)} className={`px-3 py-2 rounded-md ${cliTool === t.value ? "bg-blue-500 bg-opacity-20 border border-blue-500" : "bg-slate-700"}`}>
@@ -596,7 +596,7 @@ function RoutesTab({ routes, providers, refresh }: {
             </View>
 
             <View className="flex flex-col gap-2">
-              <Label>Provider</Label>
+              <Label>供应商</Label>
               <View className="flex flex-row gap-2 flex-wrap">
                 {providers.map(p => (
                   <View key={p.id} onClick={() => { setProviderId(p.id); setModel("") }} className={`px-3 py-2 rounded-md ${providerId === p.id ? "bg-emerald-500 bg-opacity-20 border border-emerald-500" : "bg-slate-700"}`}>
@@ -607,7 +607,7 @@ function RoutesTab({ routes, providers, refresh }: {
             </View>
 
             <View className="flex flex-col gap-2">
-              <Label>Model</Label>
+              <Label>模型</Label>
               {availableModels.length > 0 ? (
                 <View className="flex flex-row gap-2 flex-wrap">
                   {availableModels.map(m => (
@@ -618,17 +618,17 @@ function RoutesTab({ routes, providers, refresh }: {
                 </View>
               ) : (
                 <View className="bg-slate-700 rounded-md px-3 py-2">
-                  <Input className="w-full bg-transparent text-slate-200" placeholder="Model name" value={model} onInput={e => setModel(e.detail.value)} />
+                  <Input className="w-full bg-transparent text-slate-200" placeholder="模型名称" value={model} onInput={e => setModel(e.detail.value)} />
                 </View>
               )}
             </View>
 
             <View className="flex flex-row gap-3 mt-2">
               <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={() => { setShowDialog(false); resetForm() }}>
-                <Text>Cancel</Text>
+                <Text>取消</Text>
               </Button>
               <Button className="flex-1 bg-emerald-500 text-slate-900" onClick={handleSave} disabled={!cliTool || !providerId || !model}>
-                <Text>Save</Text>
+                <Text>保存</Text>
               </Button>
             </View>
           </View>
@@ -638,7 +638,7 @@ function RoutesTab({ routes, providers, refresh }: {
   )
 }
 
-// ========== Logs Tab ==========
+// ========== 日志 ==========
 function LogsTab({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
   const [autoRefresh, setAutoRefresh] = useState(false)
 
@@ -656,14 +656,14 @@ function LogsTab({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
   return (
     <View className="flex flex-col gap-3">
       <View className="flex flex-row items-center justify-between">
-        <Text className="block text-base font-semibold text-slate-200">Request Logs</Text>
+        <Text className="block text-base font-semibold text-slate-200">请求日志</Text>
         <View className="flex flex-row items-center gap-3">
           <View className="flex flex-row items-center gap-2" onClick={() => setAutoRefresh(!autoRefresh)}>
             <View className={`w-2 h-2 rounded-full ${autoRefresh ? "bg-emerald-500" : "bg-slate-600"}`} />
-            <Text className="block text-xs text-slate-400">Auto</Text>
+            <Text className="block text-xs text-slate-400">自动刷新</Text>
           </View>
           <Button variant="outline" size="sm" className="border-slate-600 text-slate-400" onClick={refresh}>
-            <Text className="text-xs">Refresh</Text>
+            <Text className="text-xs">刷新</Text>
           </Button>
         </View>
       </View>
@@ -672,8 +672,8 @@ function LogsTab({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-8 items-center">
             <FileText size={32} color="#475569" />
-            <Text className="block text-sm text-slate-500 mt-3">No request logs yet</Text>
-            <Text className="block text-xs text-slate-600 mt-1">Logs will appear when the gateway forwards requests</Text>
+            <Text className="block text-sm text-slate-500 mt-3">暂无请求日志</Text>
+            <Text className="block text-xs text-slate-600 mt-1">当网关转发请求时，日志将显示在此处</Text>
           </CardContent>
         </Card>
       ) : (
@@ -711,7 +711,7 @@ function LogsTab({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
   )
 }
 
-// ========== Main Page ==========
+// ========== 主页面 ==========
 export default function Index() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [status, setStatus] = useState<GatewayStatus | null>(null)
@@ -769,41 +769,41 @@ export default function Index() {
 
   return (
     <View className="min-h-screen bg-slate-900">
-      {/* Header */}
+      {/* 头部 */}
       <View className="bg-slate-800 border-b border-slate-700 px-4 pt-12 pb-3">
         <View className="flex flex-row items-center gap-2">
           <Activity size={20} color="#10b981" />
-          <Text className="block text-lg font-bold text-slate-200">AI Gateway</Text>
+          <Text className="block text-lg font-bold text-slate-200">AI 模型网关</Text>
         </View>
-        <Text className="block text-xs text-slate-500 mt-1">Local proxy for CLI → Model provider</Text>
+        <Text className="block text-xs text-slate-500 mt-1">本地代理：CLI 工具 → 模型供应商</Text>
       </View>
 
-      {/* Tabs */}
+      {/* 标签页 */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
         <View className="px-4 pt-3">
           <TabsList className="w-full flex flex-row bg-slate-800 rounded-lg p-1">
             <TabsTrigger value="dashboard" className="flex-1">
               <View className="flex flex-row items-center gap-1">
                 <Server size={12} color={activeTab === "dashboard" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">Dashboard</Text>
+                <Text className="text-xs">仪表盘</Text>
               </View>
             </TabsTrigger>
             <TabsTrigger value="providers" className="flex-1">
               <View className="flex flex-row items-center gap-1">
                 <Wifi size={12} color={activeTab === "providers" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">Providers</Text>
+                <Text className="text-xs">供应商</Text>
               </View>
             </TabsTrigger>
             <TabsTrigger value="routes" className="flex-1">
               <View className="flex flex-row items-center gap-1">
                 <Route size={12} color={activeTab === "routes" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">Routes</Text>
+                <Text className="text-xs">路由</Text>
               </View>
             </TabsTrigger>
             <TabsTrigger value="logs" className="flex-1">
               <View className="flex flex-row items-center gap-1">
                 <FileText size={12} color={activeTab === "logs" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">Logs</Text>
+                <Text className="text-xs">日志</Text>
               </View>
             </TabsTrigger>
           </TabsList>
