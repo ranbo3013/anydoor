@@ -109,7 +109,7 @@ export ANTHROPIC_API_KEY="gateway-proxy-key"
 ## 📦 打包 Mac 桌面应用
 
 ```bash
-# 1. 构建前端 + 后端 + Electron
+# 1. 构建前端 + 后端 + Electron（含自动打包 server 依赖）
 pnpm build:desktop
 
 # 2. 生成应用图标（首次）
@@ -118,6 +118,12 @@ node electron/generate-icon.js
 # 3. 打包 .dmg 安装包
 npx electron-builder --mac
 ```
+
+> **注意**：如果下载 Electron 超时，请设置镜像：
+> ```bash
+> export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+> export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
+> ```
 
 打包完成后，安装包在 `release/` 目录下：
 - `AnyDoor-1.0.0-universal.dmg` — Mac 安装包

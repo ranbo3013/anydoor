@@ -12,7 +12,7 @@
     "build:weapp": "taro build --type weapp",
     "build:web": "taro build --type h5",
     "build:electron": "node electron/build.js",
-    "build:desktop": "pnpm build:web && pnpm build:server && pnpm build:electron",
+    "build:desktop": "pnpm build:web && pnpm build:server && node scripts/pack-server.js && pnpm build:electron",
     "dev": "pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server -c blue,green \"pnpm dev:web\" \"pnpm dev:server\"",
     "dev:desktop": "pnpm build:electron && pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server,electron -c blue,green,yellow \"pnpm dev:web\" \"pnpm dev:server\" \"npx electron .\"",
     "dev:server": "cd server && pnpm dev",
@@ -130,18 +130,14 @@
     ],
     "extraResources": [
       {
-        "from": "server/dist",
+        "from": "server-pack",
         "to": "server",
         "filter": ["**/*"]
       },
       {
-        "from": "server/node_modules",
-        "to": "server/node_modules",
+        "from": "electron/dist/assets",
+        "to": "assets",
         "filter": ["**/*"]
-      },
-      {
-        "from": "server/package.json",
-        "to": "server/package.json"
       }
     ],
     "mac": {

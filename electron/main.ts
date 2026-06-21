@@ -20,11 +20,11 @@ let serverProcess: ReturnType<typeof import('child_process').spawn> | null =
   null;
 
 // ─── 工具函数 ────────────────────────────────────────
-function getServerPath(): string {
+function getServerDir(): string {
   if (isDev) {
-    return path.join(__dirname, '..', 'server', 'dist', 'main.js');
+    return path.join(__dirname, '..', 'server');
   }
-  return path.join(process.resourcesPath, 'server', 'main.js');
+  return path.join(process.resourcesPath, 'server');
 }
 
 function getFrontendPath(): string {
@@ -91,13 +91,16 @@ function startServer(): Promise<void> {
 
     // 生产模式：启动内置的 NestJS 服务
     const { spawn } = require('child_process') as typeof import('child_process');
-    const serverPath = getServerPath();
+    const serverDir = getServerDir();
+    const serverEntry = path.join(serverDir, 'main.js');
 
-    console.log('[AnyDoor] Starting server from:', serverPath);
+    console.log('[AnyDoor] Starting server from:', serverEntry);
+    console.log('[AnyDoor] Server dir:', serverDir);
 
     const env = { ...process.env, NODE_ENV: 'production', PORT: String(SERVER_PORT) };
-    serverProcess = spawn('node', [serverPath], {
+    serverProcess = spawn('node', [serverEntry], {
       env,
+      cwd: serverDir,
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: false,
     });
@@ -255,8 +258,11 @@ app.on('activate', () => {
 });
 
 // 退出前清理
+let isQuitting = false;
 app.on('before-quit', () => {
-  (app as any).isQuitting = true;  if (serverProcess) {
+  isQuitting = true;
+  (app as any).isQuitting = true;
+  if (serverProcess) {
     serverProcess.kill();
     serverProcess = null;
   }

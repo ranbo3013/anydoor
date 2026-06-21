@@ -44,3 +44,8 @@ pnpm-debug.log*
 
 .cozeproj/reduction
 node-compile-cache/
+
+# Electron build
+release/
+server-pack/
+electron/dist/
