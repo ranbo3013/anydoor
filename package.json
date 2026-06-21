@@ -121,6 +121,10 @@
     "appId": "com.anydoor.gateway",
     "productName": "AnyDoor",
     "afterPack": "./scripts/afterPack.js",
+    "asar": true,
+    "asarUnpack": [
+      "server-pack/**/*"
+    ],
     "directories": {
       "output": "release"
     },
@@ -138,7 +142,7 @@
       {
         "from": "server-pack",
         "to": "server",
-        "filter": ["**/*", "!**/node_modules/.cache"]
+        "filter": ["**/*"]
       },
       {
         "from": "electron/assets",

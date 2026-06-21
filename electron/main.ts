@@ -138,6 +138,23 @@ function startServer(): Promise<void> {
     const nodeModules = path.join(serverDir, 'node_modules');
     log(`node_modules exists: ${fs.existsSync(nodeModules)}`);
 
+    // 列出 server 目录内容
+    try {
+      const dirContents = fs.readdirSync(serverDir);
+      log(`Server dir contents: ${dirContents.join(', ')}`);
+      if (fs.existsSync(nodeModules)) {
+        const nmContents = fs.readdirSync(nodeModules).filter(d => !d.startsWith('.'));
+        log(`node_modules top-level (${nmContents.length}): ${nmContents.slice(0, 30).join(', ')}`);
+        // 检查关键依赖
+        const criticalDeps = ['@nestjs', 'reflect-metadata', 'rxjs'];
+        for (const dep of criticalDeps) {
+          log(`  ${dep} exists: ${fs.existsSync(path.join(nodeModules, dep))}`);
+        }
+      }
+    } catch (e) {
+      logError(`Failed to list server dir: ${e}`);
+    }
+
     if (!fs.existsSync(serverEntry)) {
       const msg = `Server entry not found: ${serverEntry}`;
       logError(msg);
@@ -164,18 +181,20 @@ function startServer(): Promise<void> {
       // 不继承 Electron 的主进程行为
     });
 
+    // 立即捕获所有输出，防止丢失
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+
     serverProcess.stdout?.on('data', (data: Buffer) => {
-      log(`[Server stdout] ${data.toString().trim()}`);
+      const msg = data.toString();
+      stdoutChunks.push(msg);
+      log(`[Server stdout] ${msg.trim()}`);
     });
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      const msg = data.toString().trim();
-      // NestJS 启动时有些 warn 是正常的，不全部当错误
-      if (msg.includes('Error') || msg.includes('error') || msg.includes('EADDRINUSE')) {
-        logError(`[Server stderr] ${msg}`);
-      } else {
-        log(`[Server stderr] ${msg}`);
-      }
+      const msg = data.toString();
+      stderrChunks.push(msg);
+      logError(`[Server stderr] ${msg.trim()}`);
     });
 
     serverProcess.on('error', (err: Error) => {
@@ -185,6 +204,23 @@ function startServer(): Promise<void> {
 
     serverProcess.on('exit', (code: number | null, signal: string | null) => {
       log(`Server process exited: code=${code}, signal=${signal}`);
+      if (code !== 0 && code !== null) {
+        log(`Server stdout total: ${stdoutChunks.join('')}`);
+        log(`Server stderr total: ${stderrChunks.join('')}`);
+        // 列出 server 目录内容帮助诊断
+        try {
+          const files = fs.readdirSync(serverDir);
+          log(`Server dir contents: ${files.join(', ')}`);
+          const nmExists = fs.existsSync(path.join(serverDir, 'node_modules'));
+          log(`node_modules exists: ${nmExists}`);
+          if (nmExists) {
+            const nmFiles = fs.readdirSync(path.join(serverDir, 'node_modules'));
+            log(`node_modules contents (first 20): ${nmFiles.slice(0, 20).join(', ')}`);
+          }
+        } catch (e) {
+          logError(`Failed to list server dir: ${e}`);
+        }
+      }
       serverProcess = null;
     });
 
