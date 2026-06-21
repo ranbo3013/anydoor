@@ -12,7 +12,7 @@
     "build:weapp": "taro build --type weapp",
     "build:web": "taro build --type h5",
     "build:electron": "node electron/build.js",
-    "build:desktop": "pnpm build:web && pnpm build:server && node scripts/pack-server.js && pnpm build:electron",
+    "build:desktop": "pnpm build:web && pnpm build:server && node scripts/pack-server.js && pnpm build:electron && npx electron-builder --mac",
     "dev": "pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server -c blue,green \"pnpm dev:web\" \"pnpm dev:server\"",
     "dev:desktop": "pnpm build:electron && pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server,electron -c blue,green,yellow \"pnpm dev:web\" \"pnpm dev:server\" \"npx electron .\"",
     "dev:server": "cd server && pnpm dev",
@@ -120,6 +120,7 @@
   "build": {
     "appId": "com.anydoor.gateway",
     "productName": "AnyDoor",
+    "afterPack": "./scripts/afterPack.js",
     "directories": {
       "output": "release"
     },
