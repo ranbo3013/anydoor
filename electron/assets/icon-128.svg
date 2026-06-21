@@ -1,0 +1,29 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="door" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fbbf24"/>
+      <stop offset="100%" style="stop-color:#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <!-- 背景 -->
+  <rect width="128" height="128" rx="28.16" fill="url(#bg)"/>
+  <!-- 门框 -->
+  <rect x="32" y="12.8" width="64" height="96" rx="5.12" fill="url(#door)" stroke="#d97706" stroke-width="2.56"/>
+  <!-- 门板分割线 -->
+  <line x1="64" y1="12.8" x2="64" y2="108.8" stroke="#d97706" stroke-width="1.92"/>
+  <!-- 左门把手 -->
+  <circle cx="56.32" cy="64" r="3.84" fill="#92400e"/>
+  <!-- 右门把手 -->
+  <circle cx="71.68" cy="64" r="3.84" fill="#92400e"/>
+  <!-- 光效 (任意门的光芒) -->
+  <ellipse cx="64" cy="108.8" rx="25.6" ry="3.84" fill="#fef3c7" opacity="0.6"/>
+  <!-- 星星装饰 -->
+  <circle cx="19.2" cy="32" r="2.56" fill="#fef3c7" opacity="0.8"/>
+  <circle cx="108.8" cy="25.6" r="1.92" fill="#fef3c7" opacity="0.6"/>
+  <circle cx="12.8" cy="76.8" r="1.536" fill="#fef3c7" opacity="0.5"/>
+  <circle cx="115.2" cy="70.4" r="2.304" fill="#fef3c7" opacity="0.7"/>
+</svg>

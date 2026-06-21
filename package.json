@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "AnyDoor - 本地 AI 模型网关，一键连接 Claude Code / Codex 到任意大模型",
+  "main": "electron/dist/main.js",
   "scripts": {
     "build": "pnpm exec concurrently --kill-others-on-fail --kill-signal SIGKILL -n lint,tsc,web,weapp,tt,server -c red,blue,green,yellow,cyan,magenta \"pnpm lint:build\" \"pnpm tsc\" \"pnpm build:web\" \"pnpm build:weapp\" \"pnpm build:tt\" \"pnpm build:server\"",
     "build:pack": "pnpm exec concurrently --kill-others-on-fail --kill-signal SIGKILL -n weapp,tt -c yellow,cyan \"pnpm build:weapp\" \"pnpm build:tt\"",
@@ -10,7 +11,10 @@
     "build:tt": "taro build --type tt",
     "build:weapp": "taro build --type weapp",
     "build:web": "taro build --type h5",
+    "build:electron": "node electron/build.js",
+    "build:desktop": "pnpm build:web && pnpm build:server && pnpm build:electron",
     "dev": "pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server -c blue,green \"pnpm dev:web\" \"pnpm dev:server\"",
+    "dev:desktop": "pnpm build:electron && pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server,electron -c blue,green,yellow \"pnpm dev:web\" \"pnpm dev:server\" \"npx electron .\"",
     "dev:server": "pnpm --filter server dev",
     "dev:tt": "taro build --type tt --watch",
     "dev:weapp": "taro build --type weapp --watch",
@@ -70,12 +74,14 @@
     "@tarojs/plugin-mini-ci": "^4.1.9",
     "@tarojs/vite-runner": "4.1.9",
     "@types/minimatch": "^5",
-    "@types/react": "^18.0.0",
     "@types/node": "^24",
+    "@types/react": "^18.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "babel-preset-taro": "4.1.9",
     "concurrently": "^9.2.1",
     "dotenv": "^17.2.3",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^8.57.0",
     "eslint-config-taro": "4.1.9",
     "eslint-plugin-react": "^7.34.1",
@@ -110,5 +116,58 @@
     "typescript": true,
     "css": "Less",
     "framework": "React"
+  },
+  "build": {
+    "appId": "com.anydoor.gateway",
+    "productName": "AnyDoor",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/dist/**/*",
+      "dist/**/*",
+      "!node_modules"
+    ],
+    "extraResources": [
+      {
+        "from": "server/dist",
+        "to": "server",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "server/node_modules",
+        "to": "server/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "server/package.json",
+        "to": "server/package.json"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
+      ],
+      "icon": "electron/assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    }
   }
 }
