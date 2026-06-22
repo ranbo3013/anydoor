@@ -12,9 +12,9 @@
     "build:weapp": "taro build --type weapp",
     "build:web": "taro build --type h5",
     "build:electron": "node electron/build.js",
-    "build:desktop": "pnpm build:web && pnpm build:server && node scripts/pack-server.js && pnpm build:electron && npx electron-builder --mac --arm64 && node scripts/verify-build.js",
-    "build:desktop:intel": "pnpm build:web && pnpm build:server && node scripts/pack-server.js && pnpm build:electron && npx electron-builder --mac --x64 && node scripts/verify-build.js",
-    "build:desktop:all": "pnpm build:web && pnpm build:server && node scripts/pack-server.js && pnpm build:electron && npx electron-builder --mac --arm64 --x64 && node scripts/verify-build.js",
+    "build:desktop": "pnpm build:web && pnpm build:server && node scripts/bundle-server.js && pnpm build:electron && npx electron-builder --mac --arm64 && node scripts/verify-build.js",
+    "build:desktop:intel": "pnpm build:web && pnpm build:server && node scripts/bundle-server.js && pnpm build:electron && npx electron-builder --mac --x64 && node scripts/verify-build.js",
+    "build:desktop:all": "pnpm build:web && pnpm build:server && node scripts/bundle-server.js && pnpm build:electron && npx electron-builder --mac --arm64 --x64 && node scripts/verify-build.js",
     "dev": "pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server -c blue,green \"pnpm dev:web\" \"pnpm dev:server\"",
     "dev:desktop": "pnpm build:electron && pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server,electron -c blue,green,yellow \"pnpm dev:web\" \"pnpm dev:server\" \"npx electron .\"",
     "dev:server": "cd server && pnpm dev",
@@ -84,6 +84,7 @@
     "dotenv": "^17.2.3",
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "eslint": "^8.57.0",
     "eslint-config-taro": "4.1.9",
     "eslint-plugin-react": "^7.34.1",
@@ -129,7 +130,7 @@
     },
     "files": [
       "electron/dist/**/*",
-      "server-pack/**/*",
+      "server-bundle/**/*",
       "dist-web/**/*",
       "electron/assets/**/*",
       "!server",
@@ -142,7 +143,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "icon": "electron/assets/icon.icns",
@@ -154,8 +158,16 @@
     "dmg": {
       "title": "${productName} ${version}",
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     }
   }

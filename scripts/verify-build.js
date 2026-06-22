@@ -41,14 +41,11 @@ try {
   console.error('[AnyDoor] ❌ Failed to read app dir:', e.message);
 }
 
-// 检查关键目录
+// 检查关键文件（esbuild bundle 方式）
 const checks = [
   { name: 'Frontend', path: path.join(appDir, 'dist-web', 'index.html') },
-  { name: 'Server main.js', path: path.join(appDir, 'server-pack', 'main.js') },
-  { name: 'Server node_modules', path: path.join(appDir, 'server-pack', 'node_modules') },
-  { name: 'Server @nestjs/core', path: path.join(appDir, 'server-pack', 'node_modules', '@nestjs', 'core') },
-  { name: 'Server express', path: path.join(appDir, 'server-pack', 'node_modules', 'express') },
-  { name: 'Server node-fetch', path: path.join(appDir, 'server-pack', 'node_modules', 'node-fetch') },
+  { name: 'Server bundle (server.js)', path: path.join(appDir, 'server-bundle', 'server.js') },
+  { name: 'Electron main', path: path.join(appDir, 'electron', 'dist', 'main.js') },
 ];
 
 let allPassed = true;
@@ -62,7 +59,6 @@ for (const check of checks) {
 if (allPassed) {
   console.log('[AnyDoor] ✅ All checks passed! The app should work correctly.');
 } else {
-  console.error('[AnyDoor] ❌ Some checks failed. The app may crash on launch.');
-  console.error('[AnyDoor]    Check if "pnpm build:desktop" completed successfully.');
-  console.error('[AnyDoor]    In particular, verify that "server-pack/node_modules" exists before building.');
+  console.log('[AnyDoor] ❌ Some checks failed. The app may crash on launch.');
+  console.log('[AnyDoor]    Check if "pnpm build:desktop" completed successfully.');
 }

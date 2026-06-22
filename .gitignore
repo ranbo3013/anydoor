@@ -48,4 +48,5 @@ node-compile-cache/
 # Electron build
 release/
 server-pack/
+server-bundle/
 electron/dist/

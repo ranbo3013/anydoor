@@ -53,9 +53,9 @@ function getServerDir(): string {
   if (isDev) {
     return path.join(__dirname, '..', 'server');
   }
-  // 生产模式：从 app 目录内的 server-pack 读取
+  // 生产模式：esbuild 单文件 bundle，在 server-bundle 目录
   const appPath = app.getAppPath();
-  const serverDir = path.join(appPath, 'server-pack');
+  const serverDir = path.join(appPath, 'server-bundle');
   log(`Server dir: ${serverDir}`);
   return serverDir;
 }
