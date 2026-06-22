@@ -112,6 +112,23 @@ export default defineConfig<'vite'>(async (merge, _env) => {
     compiler: {
       type: 'vite',
       vitePlugins: [
+        // Remove Taro's dynamic fontSize script for desktop H5 mode
+        // Taro injects: e.style.fontSize = 40*w/750 which breaks desktop rem-based layouts
+        ...(isH5
+          ? [
+              {
+                name: 'remove-taro-fontsize-script',
+                enforce: 'pre' as const,
+                transformIndexHtml(html: string) {
+                  // Remove the Taro fontSize inline script
+                  return html.replace(
+                    /<script>!function\(n\)\{function f\(\)\{var e=n\.document\.documentElement[\s\S]*?\}\(window\);<\/script>/,
+                    '<script>/* AnyDoor: Taro fontSize override removed for desktop */ document.documentElement.style.fontSize="16px";</script>'
+                  );
+                },
+              },
+            ]
+          : []),
         {
           name: 'postcss-config-loader-plugin',
           config(config) {
