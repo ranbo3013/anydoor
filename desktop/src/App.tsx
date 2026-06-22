@@ -711,8 +711,11 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
 
 // ─── Settings ────────────────────────────────────────────
 function SettingsPage() {
-  const [gatewayPort, setGatewayPort] = useState('3000')
-  const [gatewayHost, setGatewayHost] = useState('0.0.0.0')
+  const [gatewayInfo, setGatewayInfo] = useState<{ port: number; host: string; uptime: number } | null>(null)
+
+  useEffect(() => {
+    API.get('/api/gateway/config/_info').then((data: unknown) => setGatewayInfo(data as { port: number; host: string; uptime: number })).catch(() => {})
+  }, [])
 
   const handleExportConfig = async () => {
     try {
@@ -771,21 +774,27 @@ function SettingsPage() {
         <p className="text-sm text-gray-500 mt-1">网关配置与数据管理</p>
       </div>
 
-      {/* Gateway Config */}
+      {/* Gateway Status */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <SettingsIcon size={18} className="text-gray-400" /> 网关配置
+          <SettingsIcon size={18} className="text-gray-400" /> 网关状态
         </h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">监听端口</label>
-            <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-              value={gatewayPort} onChange={e => setGatewayPort(e.target.value)} />
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between py-2 border-b border-gray-50">
+            <span className="text-gray-500">监听端口</span>
+            <span className="font-mono text-gray-900">{gatewayInfo?.port ?? 3000}</span>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">监听地址</label>
-            <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-              value={gatewayHost} onChange={e => setGatewayHost(e.target.value)} />
+          <div className="flex justify-between py-2 border-b border-gray-50">
+            <span className="text-gray-500">监听地址</span>
+            <span className="font-mono text-gray-900">{gatewayInfo?.host ?? '0.0.0.0'}</span>
+          </div>
+          <div className="flex justify-between py-2 border-b border-gray-50">
+            <span className="text-gray-500">代理地址</span>
+            <span className="font-mono text-gray-900">http://localhost:{gatewayInfo?.port ?? 3000}/api/gateway/proxy</span>
+          </div>
+          <div className="flex justify-between py-2">
+            <span className="text-gray-500">运行时长</span>
+            <span className="text-gray-900">{gatewayInfo?.uptime ? Math.floor(gatewayInfo.uptime / 60) + ' 分钟' : '—'}</span>
           </div>
         </div>
       </div>

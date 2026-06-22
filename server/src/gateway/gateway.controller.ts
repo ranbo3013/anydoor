@@ -21,6 +21,23 @@ export class GatewayController {
     return { code: 200, msg: 'success', data: status };
   }
 
+  @Get('_info')
+  getInfo() {
+    console.log('[Gateway] GET /api/gateway/_info');
+    const providers = this.gatewayService.getProviders();
+    const routes = this.gatewayService.getRoutes();
+    return {
+      code: 200,
+      msg: 'success',
+      data: {
+        providerCount: providers.length,
+        routeCount: routes.length,
+        port: 3000,
+        host: 'localhost',
+      },
+    };
+  }
+
   // ========== Provider CRUD ==========
 
   @Get('providers')
