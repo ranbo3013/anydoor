@@ -23,16 +23,32 @@ if (!appPath || !fs.existsSync(appPath)) {
 
 console.log('[AnyDoor] 🔍 Verifying:', appPath);
 
-const resourcesDir = path.join(appPath, 'Contents', 'Resources');
+// asar: false 时，app 目录在 Contents/Resources/app/
+const appDir = path.join(appPath, 'Contents', 'Resources', 'app');
+
+if (!fs.existsSync(appDir)) {
+  console.error('[AnyDoor] ❌ app directory not found:', appDir);
+  process.exit(1);
+}
+
+console.log('[AnyDoor] 📁 app directory:', appDir);
+
+// 列出 app 目录内容
+try {
+  const contents = fs.readdirSync(appDir);
+  console.log('[AnyDoor] 📋 app contents:', contents.join(', '));
+} catch (e) {
+  console.error('[AnyDoor] ❌ Failed to read app dir:', e.message);
+}
 
 // 检查关键目录
 const checks = [
-  { name: 'Frontend', path: path.join(resourcesDir, 'frontend', 'index.html') },
-  { name: 'Server main.js', path: path.join(resourcesDir, 'server', 'main.js') },
-  { name: 'Server node_modules', path: path.join(resourcesDir, 'server', 'node_modules') },
-  { name: 'Server @nestjs/core', path: path.join(resourcesDir, 'server', 'node_modules', '@nestjs', 'core') },
-  { name: 'Server express', path: path.join(resourcesDir, 'server', 'node_modules', 'express') },
-  { name: 'Server node-fetch', path: path.join(resourcesDir, 'server', 'node_modules', 'node-fetch') },
+  { name: 'Frontend', path: path.join(appDir, 'dist-web', 'index.html') },
+  { name: 'Server main.js', path: path.join(appDir, 'server-pack', 'main.js') },
+  { name: 'Server node_modules', path: path.join(appDir, 'server-pack', 'node_modules') },
+  { name: 'Server @nestjs/core', path: path.join(appDir, 'server-pack', 'node_modules', '@nestjs', 'core') },
+  { name: 'Server express', path: path.join(appDir, 'server-pack', 'node_modules', 'express') },
+  { name: 'Server node-fetch', path: path.join(appDir, 'server-pack', 'node_modules', 'node-fetch') },
 ];
 
 let allPassed = true;

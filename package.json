@@ -129,29 +129,14 @@
     },
     "files": [
       "electron/dist/**/*",
+      "server-pack/**/*",
+      "dist-web/**/*",
+      "electron/assets/**/*",
       "!server",
-      "!server-pack",
-      "!dist",
-      "!dist-web",
       "!src",
-      "!release",
-      "!node_modules/@esbuild",
-      "!node_modules/esbuild"
+      "!release"
     ],
-    "extraResources": [
-      {
-        "from": "dist-web",
-        "to": "frontend"
-      },
-      {
-        "from": "server-pack",
-        "to": "server"
-      },
-      {
-        "from": "electron/assets",
-        "to": "assets"
-      }
-    ],
+    "extraResources": [],
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [

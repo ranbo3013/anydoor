@@ -53,27 +53,30 @@ function getServerDir(): string {
   if (isDev) {
     return path.join(__dirname, '..', 'server');
   }
-  // 生产模式：从 resources/server 读取
-  const resourceDir = path.join(process.resourcesPath, 'server');
-  log(`Server dir: ${resourceDir}`);
-  return resourceDir;
+  // 生产模式：从 app 目录内的 server-pack 读取
+  const appPath = app.getAppPath();
+  const serverDir = path.join(appPath, 'server-pack');
+  log(`Server dir: ${serverDir}`);
+  return serverDir;
 }
 
 function getFrontendDir(): string {
   if (isDev) {
     return path.join(__dirname, '..', 'dist');
   }
-  // 生产模式：从 resources/frontend 读取
-  const resourceDir = path.join(process.resourcesPath, 'frontend');
-  log(`Frontend dir: ${resourceDir}`);
-  return resourceDir;
+  // 生产模式：从 app 目录内的 dist-web 读取
+  const appPath = app.getAppPath();
+  const frontendDir = path.join(appPath, 'dist-web');
+  log(`Frontend dir: ${frontendDir}`);
+  return frontendDir;
 }
 
 function getTrayIconPath(): string {
   if (isDev) {
     return path.join(__dirname, 'assets', 'trayIcon.png');
   }
-  return path.join(process.resourcesPath, 'assets', 'trayIcon.png');
+  const appPath = app.getAppPath();
+  return path.join(appPath, 'electron', 'assets', 'trayIcon.png');
 }
 
 function waitUntilServerReady(
