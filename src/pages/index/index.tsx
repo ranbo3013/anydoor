@@ -972,18 +972,51 @@ export default function Index() {
   // Force Taro H5 containers to full desktop width/height
   useEffect(() => {
     const forceDesktopLayout = () => {
-      const selectors = ['#app', '.taro-tabbar__container', '.taro-tabbar__panel', '.taro_page', '[data-page]']
-      selectors.forEach(sel => {
-        document.querySelectorAll(sel).forEach((el: Element) => {
-          const htmlEl = el as HTMLElement
-          htmlEl.style.width = '100%'
-          htmlEl.style.maxWidth = 'none'
-          htmlEl.style.height = '100%'
-        })
+      // Reset fontSize to 16px (Taro may override it)
+      document.documentElement.style.fontSize = '16px'
+
+      // Force ALL ancestor containers to full width/height
+      const allSelectors = [
+        'html', 'body', '#app',
+        '.taro-tabbar__container', '.taro-tabbar__panel',
+        '.taro_router', '.taro-route',
+        '.taro_page', '.taro_page_show', '.taro_page_stationed',
+        '[data-page]', '[data-tabbar-page]',
+        'taro-page', 'taro-tabbar-container', 'taro-tabbar-panel',
+      ]
+      allSelectors.forEach(sel => {
+        try {
+          document.querySelectorAll(sel).forEach((el: Element) => {
+            const htmlEl = el as HTMLElement
+            htmlEl.style.width = '100%'
+            htmlEl.style.maxWidth = 'none'
+            htmlEl.style.minWidth = '0'
+            htmlEl.style.height = '100%'
+            htmlEl.style.minHeight = '100%'
+            htmlEl.style.margin = '0'
+            htmlEl.style.padding = '0'
+          })
+        } catch (_) { /* ignore invalid selectors */ }
       })
+
+      // Nuclear option: force ALL divs that are ancestors of our root element
+      const rootEl = document.querySelector('.anydoor-root')
+      if (rootEl) {
+        let parent = rootEl.parentElement
+        while (parent && parent !== document.documentElement) {
+          parent.style.width = '100%'
+          parent.style.maxWidth = 'none'
+          parent.style.height = '100%'
+          parent.style.minHeight = '100%'
+          parent.style.margin = '0'
+          parent.style.padding = '0'
+          parent = parent.parentElement
+        }
+      }
     }
     forceDesktopLayout()
-    const timer = setInterval(forceDesktopLayout, 500)
+    // Run immediately after DOM ready and periodically to catch Taro's delayed style injections
+    const timer = setInterval(forceDesktopLayout, 300)
     return () => clearInterval(timer)
   }, [])
 
@@ -1013,7 +1046,7 @@ export default function Index() {
   }
 
   return (
-    <View style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100vh', backgroundColor: 'var(--background)', overflow: 'hidden' }}>
+    <View className="anydoor-root" style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100vh', backgroundColor: 'var(--background)', overflow: 'hidden' }}>
       {/* Sidebar */}
       <View style={{ width: '240px', minWidth: '240px', flexShrink: 0, backgroundColor: 'var(--sidebar)', display: 'flex', flexDirection: 'column' }}>
         {/* Logo */}
