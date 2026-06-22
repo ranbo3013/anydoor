@@ -126,23 +126,16 @@ export class GatewayService {
       const https = require('https');
       const http = require('http');
 
-      // Normalize URL and determine test endpoint based on provider type
+      // Normalize: remove trailing slashes
       let normalizedUrl = baseUrl.replace(/\/+$/, '');
       
-      // For OpenAI-compatible APIs, ensure URL ends with /v1
-      if (type !== 'anthropic' && !normalizedUrl.endsWith('/v1')) {
-        normalizedUrl += '/v1';
-      }
-
-      const client = normalizedUrl.startsWith('https') ? https : http;
-      
-      // Anthropic uses different auth header and endpoint
-      let testPath: string;
+      // Build the full test URL
+      let testUrl: string;
       let headers: Record<string, string>;
       
       if (type === 'anthropic') {
-        // Anthropic: test with /v1/messages (just check if the endpoint responds)
-        testPath = '/v1/messages';
+        // Anthropic: test with /v1/messages
+        testUrl = normalizedUrl.includes('/v1') ? `${normalizedUrl}/messages` : `${normalizedUrl}/v1/messages`;
         headers = {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
@@ -150,28 +143,32 @@ export class GatewayService {
         };
       } else {
         // OpenAI-compatible: test with /v1/models
-        testPath = `${normalizedUrl.endsWith('/v1') ? '' : '/v1'}/models`;
+        if (normalizedUrl.endsWith('/v1')) {
+          testUrl = `${normalizedUrl}/models`;
+        } else if (normalizedUrl.includes('/v1/')) {
+          testUrl = `${normalizedUrl}/models`;
+        } else {
+          testUrl = `${normalizedUrl}/v1/models`;
+        }
         headers = {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         };
       }
       
-      const baseUrlForPath = type === 'anthropic' ? normalizedUrl : normalizedUrl;
-      const url = new URL(testPath, baseUrlForPath.startsWith('http') ? baseUrlForPath : `https://${baseUrlForPath}`);
+      const url = new URL(testUrl);
+      const client = url.protocol === 'https:' ? https : http;
+      
       console.log(`[TestConnection] Testing: ${url.toString()} (type: ${type || 'openai_chat'})`);
       
       return new Promise((resolve) => {
         const req = client.request(
           {
             hostname: url.hostname,
-            port: url.port,
+            port: url.port || (url.protocol === 'https:' ? 443 : 80),
             path: url.pathname + url.search,
             method: 'GET',
-            headers: type === 'anthropic' ? headers : {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
+            headers,
             timeout: 15000,
           },
           (res: any) => {
