@@ -164,6 +164,12 @@ function startServer(): Promise<void> {
       return;
     }
 
+    // 数据目录：~/.anydoor/data（用户目录下，不会被应用更新覆盖）
+    const userDataDir = path.join(app.getPath('home'), '.anydoor', 'data');
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+
     // 使用 ELECTRON_RUN_AS_NODE=1 让 Electron 以纯 Node.js 模式运行
     // 这样 fork 出的子进程不会启动 Electron 窗口，只运行 NestJS 服务
     const env = {
@@ -171,6 +177,7 @@ function startServer(): Promise<void> {
       ELECTRON_RUN_AS_NODE: '1',
       NODE_ENV: 'production',
       PORT: String(SERVER_PORT),
+      ANYDOOR_DATA_DIR: userDataDir,
     };
 
     log(`Forking server with ELECTRON_RUN_AS_NODE=1`);

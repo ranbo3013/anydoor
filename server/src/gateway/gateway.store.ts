@@ -2,7 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Provider, RouteConfig, ProxyLog, GatewayStatus, ApiFormat } from './gateway.types';
 
-const DATA_DIR = path.join(process.cwd(), 'gateway-data');
+// 优先使用 ANYDOOR_DATA_DIR 环境变量（Electron 设置为 ~/.anydoor/data）
+// 否则回退到当前工作目录下的 gateway-data
+const DATA_DIR = process.env.ANYDOOR_DATA_DIR || path.join(process.cwd(), 'gateway-data');
 const PROVIDERS_FILE = path.join(DATA_DIR, 'providers.json');
 const ROUTES_FILE = path.join(DATA_DIR, 'routes.json');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.json');
