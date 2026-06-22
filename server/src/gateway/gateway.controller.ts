@@ -5,6 +5,7 @@ import { Request, Response } from 'express';
 import { GatewayService } from './gateway.service';
 import { Provider, RouteConfig } from './gateway.types';
 import * as store from './gateway.store';
+import { curlRequest, curlStream } from './curl-fetch';
 
 @Controller('gateway')
 export class GatewayController {
@@ -234,14 +235,8 @@ export class GatewayController {
     const responseId = `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     try {
-      const fetch = (await import('node-fetch')).default;
-
-      const headers: any = {
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/event-stream',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
       };
 
       if (targetFormat === 'anthropic') {
@@ -251,50 +246,17 @@ export class GatewayController {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
       }
 
-      console.log(`[Gateway Proxy] Forwarding to: ${upstreamUrl} | Stream: ${isStream}`);
-
-      const upstreamRes = await fetch(upstreamUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(upstreamBody),
-      });
-
-      if (!upstreamRes.ok) {
-        const errorText = await upstreamRes.text();
-        console.error(`[Gateway Proxy] Upstream error: HTTP ${upstreamRes.status} - ${errorText}`);
-
-        store.addLog({
-          direction: 'outbound',
-          cliTool,
-          provider: provider.name,
-          model,
-          endpoint: originalEndpoint,
-          statusCode: upstreamRes.status,
-          duration: Date.now() - startTime,
-          error: errorText.slice(0, 500),
-        });
-
-        // If the original request was Responses API format, wrap the error
-        if (originalEndpoint.includes('/responses')) {
-          return res.status(upstreamRes.status).json({
-            error: {
-              message: `Upstream error from ${provider.name}: ${errorText.slice(0, 200)}`,
-              type: 'upstream_error',
-              code: upstreamRes.status,
-              param: '',
-              provider: provider.name,
-              model,
-              endpoint: originalEndpoint,
-              upstream_status: upstreamRes.status,
-            },
-          });
-        }
-        return res.status(upstreamRes.status).type(upstreamRes.headers.get('content-type') || 'application/json').send(errorText);
-      }
-
-      store.incrementRequests();
+      console.log(`[Gateway Proxy] Forwarding via curl to: ${upstreamUrl} | Stream: ${isStream}`);
 
       if (isStream) {
+        // Use curl subprocess for streaming (bypasses Cloudflare TLS fingerprint)
+        const curlProc = curlStream(upstreamUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(upstreamBody),
+          timeout: 120,
+        });
+
         // Handle SSE streaming
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
@@ -304,17 +266,15 @@ export class GatewayController {
         const needConvert = originalEndpoint.includes('/responses');
 
         if (needConvert) {
-          // Convert Chat Completions SSE to Responses API SSE
           res.write(`data: ${JSON.stringify({
             type: 'response.created',
             response: { id: responseId, object: 'response', status: 'in_progress', model, output: [] },
           })}\n\n`);
         }
 
-        const body = upstreamRes.body;
         let buffer = '';
 
-        body.on('data', (chunk: Buffer) => {
+        curlProc.stdout!.on('data', (chunk: Buffer) => {
           buffer += chunk.toString();
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
@@ -353,21 +313,28 @@ export class GatewayController {
           }
         });
 
-        body.on('end', () => {
+        curlProc.stderr!.on('data', (chunk: Buffer) => {
+          const msg = chunk.toString().trim();
+          if (msg) {
+            console.log(`[Gateway Proxy] curl stderr: ${msg}`);
+          }
+        });
+
+        curlProc.on('close', (code: number) => {
           store.addLog({
             direction: 'outbound',
             cliTool,
             provider: provider.name,
             model,
             endpoint: originalEndpoint,
-            statusCode: 200,
+            statusCode: code === 0 ? 200 : 502,
             duration: Date.now() - startTime,
           });
           res.end();
         });
 
-        body.on('error', (err: Error) => {
-          console.error('[Gateway Proxy] Stream error:', err);
+        curlProc.on('error', (err: Error) => {
+          console.error('[Gateway Proxy] curl process error:', err);
           store.addLog({
             direction: 'outbound',
             cliTool,
@@ -380,14 +347,60 @@ export class GatewayController {
           });
           res.end();
         });
+
+        // Handle client disconnect
+        req.on('close', () => {
+          if (!curlProc.killed) {
+            curlProc.kill();
+          }
+        });
+
       } else {
-        // Non-streaming response
-        const responseText = await upstreamRes.text();
+        // Non-streaming: use curlRequest
+        const response = await curlRequest(upstreamUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(upstreamBody),
+          timeout: 60000,
+        });
+
+        if (response.statusCode >= 400) {
+          console.error(`[Gateway Proxy] Upstream error: HTTP ${response.statusCode} - ${response.body.substring(0, 200)}`);
+
+          store.addLog({
+            direction: 'outbound',
+            cliTool,
+            provider: provider.name,
+            model,
+            endpoint: originalEndpoint,
+            statusCode: response.statusCode,
+            duration: Date.now() - startTime,
+            error: response.body.slice(0, 500),
+          });
+
+          if (originalEndpoint.includes('/responses')) {
+            return res.status(response.statusCode).json({
+              error: {
+                message: `Upstream error from ${provider.name}: ${response.body.slice(0, 200)}`,
+                type: 'upstream_error',
+                code: response.statusCode,
+                param: '',
+                provider: provider.name,
+                model,
+                endpoint: originalEndpoint,
+                upstream_status: response.statusCode,
+              },
+            });
+          }
+          return res.status(response.statusCode).type('application/json').send(response.body);
+        }
+
+        store.incrementRequests();
 
         if (originalEndpoint.includes('/responses')) {
           // Convert Chat Completions response to Responses API format
           try {
-            const chatResponse = JSON.parse(responseText);
+            const chatResponse = JSON.parse(response.body);
             const convertedResponse = targetFormat === 'anthropic'
               ? store.anthropicResponseToResponses(chatResponse)
               : store.chatResponseToResponses(chatResponse);
@@ -402,8 +415,7 @@ export class GatewayController {
             });
             return res.status(HttpStatus.OK).json(convertedResponse);
           } catch {
-            // If conversion fails, pass through as-is
-            return res.type(upstreamRes.headers.get('content-type') || 'application/json').send(responseText);
+            return res.type('application/json').send(response.body);
           }
         }
 
@@ -417,7 +429,7 @@ export class GatewayController {
           duration: Date.now() - startTime,
         });
 
-        return res.type(upstreamRes.headers.get('content-type') || 'application/json').send(responseText);
+        return res.type('application/json').send(response.body);
       }
     } catch (err: any) {
       console.error('[Gateway Proxy] Error:', err.message);
@@ -457,13 +469,7 @@ export class GatewayController {
     console.log(`[Gateway Proxy GET] ${upstreamUrl}`);
 
     try {
-      const fetch = (await import('node-fetch')).default;
-      const headers: any = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/event-stream',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
-      };
+      const headers: Record<string, string> = {};
       if (provider.type === 'anthropic') {
         headers['x-api-key'] = provider.apiKey;
         headers['anthropic-version'] = '2023-06-01';
@@ -471,13 +477,12 @@ export class GatewayController {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
       }
 
-      const upstreamRes = await fetch(upstreamUrl, { headers });
-      const responseText = await upstreamRes.text();
+      const response = await curlRequest(upstreamUrl, { headers, timeout: 30000 });
 
       return res
-        .status(upstreamRes.status)
-        .type(upstreamRes.headers.get('content-type') || 'application/json')
-        .send(responseText);
+        .status(response.statusCode || 200)
+        .type('application/json')
+        .send(response.body);
     } catch (err: any) {
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         error: { message: err.message, type: 'proxy_error' },

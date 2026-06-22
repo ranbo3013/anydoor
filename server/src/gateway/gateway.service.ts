@@ -123,29 +123,23 @@ export class GatewayService {
   async testProviderConnection(baseUrl: string, apiKey: string, type?: string): Promise<{ success: boolean; message: string; latency?: number; detail?: string; modelCount?: number; models?: string[] }> {
     const startTime = Date.now();
     try {
-      const https = require('https');
-      const http = require('http');
+      const { curlRequest } = require('./curl-fetch');
 
       // Normalize: remove trailing slashes
       let normalizedUrl = baseUrl.replace(/\/+$/, '');
-      
+
       // Build the full test URL
       let testUrl: string;
       let headers: Record<string, string>;
-      
+
       if (type === 'anthropic') {
-        // Anthropic: test with /v1/messages
         testUrl = normalizedUrl.includes('/v1') ? `${normalizedUrl}/messages` : `${normalizedUrl}/v1/messages`;
         headers = {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
         };
       } else {
-        // OpenAI-compatible: test with /v1/models
         if (normalizedUrl.endsWith('/v1')) {
           testUrl = `${normalizedUrl}/models`;
         } else if (normalizedUrl.includes('/v1/')) {
@@ -156,109 +150,79 @@ export class GatewayService {
         headers = {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Sec-Fetch-Dest': 'empty',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Site': 'same-origin',
         };
       }
-      
-      const url = new URL(testUrl);
-      const client = url.protocol === 'https:' ? https : http;
-      
-      console.log(`[TestConnection] Testing: ${url.toString()} (type: ${type || 'openai_chat'})`);
-      
-      return new Promise((resolve) => {
-        const req = client.request(
-          {
-            hostname: url.hostname,
-            port: url.port || (url.protocol === 'https:' ? 443 : 80),
-            path: url.pathname + url.search,
-            method: 'GET',
-            headers,
-            timeout: 15000,
-          },
-          (res: any) => {
-            const latency = Date.now() - startTime;
-            let body = '';
-            res.on('data', (chunk: any) => { body += chunk; });
-            res.on('end', () => {
-              console.log(`[TestConnection] Response: ${res.statusCode}, Body: ${body.substring(0, 200)}`);
-              if (res.statusCode === 200) {
-                try {
-                  const data = JSON.parse(body);
-                  const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id || m.name || m.model).filter(Boolean) : [];
-                  const modelCount = models.length;
-                  resolve({
-                    success: true,
-                    message: `连接成功 (${latency}ms)，可用模型: ${modelCount} 个`,
-                    latency,
-                    modelCount,
-                    models,
-                  });
-                } catch {
-                  resolve({
-                    success: true,
-                    message: `连接成功 (${latency}ms)`,
-                    latency,
-                  });
-                }
-              } else if (res.statusCode === 401 || res.statusCode === 403) {
-                resolve({
-                  success: false,
-                  message: 'API Key 无效或无权限',
-                  latency,
-                  detail: body.substring(0, 200),
-                });
-              } else if (res.statusCode === 404) {
-                resolve({
-                  success: false,
-                  message: 'API 端点不存在，请检查 Base URL 格式',
-                  latency,
-                  detail: `请求地址: ${url.toString()}`,
-                });
-              } else {
-                resolve({
-                  success: false,
-                  message: `HTTP ${res.statusCode}`,
-                  latency,
-                  detail: body.substring(0, 200),
-                });
-              }
-            });
-          },
-        );
 
-        req.on('error', (err: any) => {
-          console.log(`[TestConnection] Error: ${err.message}`);
-          resolve({
+      console.log(`[TestConnection] Testing via curl: ${testUrl} (type: ${type || 'openai_chat'})`);
+
+      const response = await curlRequest(testUrl, { headers, timeout: 15000 });
+      const latency = Date.now() - startTime;
+
+      console.log(`[TestConnection] Response: ${response.statusCode}, Body: ${response.body.substring(0, 200)}`);
+
+      if (response.statusCode === 200) {
+        try {
+          const data = JSON.parse(response.body);
+          const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id || m.name || m.model).filter(Boolean) : [];
+          const modelCount = models.length;
+          return {
+            success: true,
+            message: `连接成功 (${latency}ms)，可用模型: ${modelCount} 个`,
+            latency,
+            modelCount,
+            models,
+          };
+        } catch {
+          return {
+            success: true,
+            message: `连接成功 (${latency}ms)`,
+            latency,
+          };
+        }
+      } else if (response.statusCode === 401 || response.statusCode === 403) {
+        return {
+          success: false,
+          message: 'API Key 无效或无权限',
+          latency,
+          detail: response.body.substring(0, 200),
+        };
+      } else if (response.statusCode === 404) {
+        return {
+          success: false,
+          message: 'API 端点不存在，请检查 Base URL 格式',
+          latency,
+          detail: `请求地址: ${testUrl}`,
+        };
+      } else if (response.statusCode === 0) {
+        return {
+          success: false,
+          message: '连接失败: 无法连接到服务器',
+          latency,
+          detail: '请检查 Base URL 是否正确，确保可以访问',
+        };
+      } else {
+        // Check if response looks like Cloudflare block page
+        if (response.body.includes('Cloudflare') || response.body.includes('blocked')) {
+          return {
             success: false,
-            message: `连接失败: ${err.message}`,
-            latency: Date.now() - startTime,
-            detail: `请检查 Base URL 是否正确，确保可以访问。常见问题：URL 格式错误、网络代理、防火墙拦截`,
-          });
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          resolve({
-            success: false,
-            message: '连接超时 (15秒)',
-            latency: Date.now() - startTime,
-            detail: '请检查网络连接，确保可以访问该 API 地址',
-          });
-        });
-
-        req.end();
-      });
+            message: `被 Cloudflare 拦截 (HTTP ${response.statusCode})`,
+            latency,
+            detail: '该 API 地址启用了 Cloudflare 防护，请尝试使用其他 API 地址或联系服务商',
+          };
+        }
+        return {
+          success: false,
+          message: `HTTP ${response.statusCode}`,
+          latency,
+          detail: response.body.substring(0, 200),
+        };
+      }
     } catch (err: any) {
       return {
         success: false,
-        message: `请求构建失败: ${err.message}`,
+        message: `连接失败: ${err.message}`,
+        latency: Date.now() - startTime,
+        detail: `请检查 Base URL 是否正确，确保可以访问。常见问题：URL 格式错误、网络代理、防火墙拦截`,
       };
     }
   }
