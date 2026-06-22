@@ -1,10 +1,13 @@
 /**
  * AnyDoor - 服务器打包脚本
  * 将 server/dist + 生产依赖 打包成扁平结构
- * 解决 pnpm symlink 导致 electron-builder 打包失败的问题
+ * 
+ * 方案：直接从 pnpm 的 node_modules 用 cp -rL 复制（解析软链接）
+ * 避免 npm install 在 pnpm workspace 中失败的问题
  */
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_DIR = path.join(ROOT, 'server');
@@ -19,7 +22,7 @@ fs.mkdirSync(PACK_DIR, { recursive: true });
 // 1. 检查 server/dist 是否存在
 const serverDist = path.join(SERVER_DIR, 'dist');
 if (!fs.existsSync(serverDist)) {
-  console.error('[AnyDoor] ❌ server/dist not found. Run "pnpm build:server" first.');
+  console.error('[AnyDoor] ❌ server/dist not found. Run "cd server && pnpm build" first.');
   process.exit(1);
 }
 
@@ -27,7 +30,7 @@ if (!fs.existsSync(serverDist)) {
 fs.cpSync(serverDist, PACK_DIR, { recursive: true });
 console.log('[AnyDoor] ✅ Copied server/dist → server-pack/');
 
-// 3. 生成精简的 package.json（只含生产依赖）
+// 3. 复制 package.json
 const pkgJson = JSON.parse(fs.readFileSync(path.join(SERVER_DIR, 'package.json'), 'utf-8'));
 const prodPkg = {
   name: pkgJson.name || 'anydoor-server',
@@ -37,51 +40,53 @@ const prodPkg = {
 };
 fs.writeFileSync(path.join(PACK_DIR, 'package.json'), JSON.stringify(prodPkg, null, 2));
 console.log('[AnyDoor] ✅ Created server-pack/package.json');
-console.log('[AnyDoor]    Dependencies:', Object.keys(prodPkg.dependencies).join(', '));
 
-// 4. 用 npm install 生成扁平化的 node_modules（解决 pnpm symlink 问题）
-const { execSync } = require('child_process');
-console.log('[AnyDoor] 📦 Installing production dependencies (flat node_modules)...');
+// 4. 复制 node_modules（解析软链接）
+const srcNm = path.join(SERVER_DIR, 'node_modules');
+const dstNm = path.join(PACK_DIR, 'node_modules');
+
+if (!fs.existsSync(srcNm)) {
+  console.error('[AnyDoor] ❌ server/node_modules not found. Run "cd server && pnpm install" first.');
+  process.exit(1);
+}
+
+console.log('[AnyDoor] 📦 Copying node_modules (resolving symlinks)...');
+
 try {
-  execSync('npm install --production --no-package-lock 2>&1', {
-    cwd: PACK_DIR,
-    stdio: 'inherit',
-  });
+  // cp -rL 解析软链接后复制，生成扁平的 node_modules
+  execSync(`cp -rL "${srcNm}" "${dstNm}"`, { stdio: 'inherit' });
+  console.log('[AnyDoor] ✅ Copied node_modules with resolved symlinks');
 } catch (err) {
-  console.error('[AnyDoor] ❌ npm install failed, trying with registry mirror...');
+  console.error('[AnyDoor] ⚠️ cp -rL failed, falling back to fs.cpSync...');
   try {
-    execSync('npm install --production --no-package-lock --registry=https://registry.npmmirror.com 2>&1', {
-      cwd: PACK_DIR,
-      stdio: 'inherit',
-    });
+    fs.cpSync(srcNm, dstNm, { recursive: true, verbatimSymlinks: false });
+    console.log('[AnyDoor] ✅ Copied node_modules with fs.cpSync');
   } catch (err2) {
-    console.error('[AnyDoor] ❌ Failed to install server dependencies with mirror too.');
+    console.error('[AnyDoor] ❌ Failed to copy node_modules:', err2.message);
     process.exit(1);
   }
 }
 
-// 5. 验证关键依赖是否安装成功
-const nmDir = path.join(PACK_DIR, 'node_modules');
-if (!fs.existsSync(nmDir)) {
-  console.error('[AnyDoor] ❌ node_modules not created after npm install!');
-  process.exit(1);
-}
-
-// 检查关键依赖
+// 5. 验证关键依赖
 const criticalDeps = ['@nestjs/core', '@nestjs/platform-express', 'express', 'node-fetch'];
 const missingDeps = [];
 for (const dep of criticalDeps) {
-  if (!fs.existsSync(path.join(nmDir, dep))) {
+  if (!fs.existsSync(path.join(dstNm, dep))) {
     missingDeps.push(dep);
   }
 }
 
 if (missingDeps.length > 0) {
   console.error('[AnyDoor] ❌ Missing critical dependencies:', missingDeps.join(', '));
+  console.error('[AnyDoor]    server/node_modules contents (top-level):');
+  try {
+    const dirs = fs.readdirSync(srcNm).filter(d => !d.startsWith('.'));
+    console.error('[AnyDoor]   ', dirs.join(', '));
+  } catch (_) {}
   process.exit(1);
 }
 
-const installedDeps = fs.readdirSync(nmDir).filter(d => !d.startsWith('.'));
+const installedDeps = fs.readdirSync(dstNm).filter(d => !d.startsWith('.'));
 console.log('[AnyDoor] ✅ Server pack ready at:', PACK_DIR);
-console.log('[AnyDoor]    Installed', installedDeps.length, 'packages');
+console.log('[AnyDoor]    Installed', installedDeps.length, 'top-level packages');
 console.log('[AnyDoor]    All critical dependencies verified ✓');
