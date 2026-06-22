@@ -91,6 +91,16 @@ export class GatewayController {
     return { code: 200, msg: 'success', data: result };
   }
 
+  @Post('providers/test')
+  async testProviderDirect(@Body() body: { baseUrl: string; apiKey: string }) {
+    console.log(`[Gateway] POST /api/gateway/providers/test - ${body.baseUrl}`);
+    if (!body.baseUrl) {
+      return { code: 400, msg: 'Base URL is required', data: { success: false, message: 'Base URL 不能为空' } };
+    }
+    const result = await this.gatewayService.testProviderConnection(body.baseUrl, body.apiKey || '');
+    return { code: 200, msg: 'success', data: result };
+  }
+
   // ========== Route CRUD ==========
 
   @Get('routes')

@@ -255,6 +255,7 @@ function Providers({ providers, setProviders }: {
 }) {
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
   const [form, setForm] = useState({ name: '', type: 'openai_chat' as Provider['type'], baseUrl: '', apiKey: '', models: '', enabled: true })
 
   const loadProviders = useCallback(async () => {
@@ -294,11 +295,38 @@ function Providers({ providers, setProviders }: {
   }
 
   const handleTest = async (id: string) => {
+    setTesting(true)
     try {
-      await API.post(`/api/gateway/providers/${id}/test`)
-      alert('连接成功！')
+      const res: any = await API.post(`/api/gateway/providers/${id}/test`)
+      if (res?.data?.success) {
+        alert('连接成功！')
+      } else {
+        alert(`连接失败：${res?.data?.message || '请检查配置'}`)
+      }
     } catch {
       alert('连接失败，请检查配置')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleTestDirect = async () => {
+    if (!form.baseUrl) {
+      alert('请先填写 Base URL')
+      return
+    }
+    setTesting(true)
+    try {
+      const res: any = await API.post('/api/gateway/providers/test', { baseUrl: form.baseUrl, apiKey: form.apiKey })
+      if (res?.data?.success) {
+        alert('连接成功！')
+      } else {
+        alert(`连接失败：${res?.data?.message || '请检查 Base URL 和 API Key'}`)
+      }
+    } catch {
+      alert('连接失败，请检查 Base URL 和 API Key')
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -371,9 +399,14 @@ function Providers({ providers, setProviders }: {
                 </p>
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">取消</button>
-              <button onClick={handleSave} className="px-4 py-2 text-sm text-white rounded-lg" style={{ background: 'var(--primary)' }}>保存</button>
+            <div className="flex justify-between mt-6">
+              <button onClick={handleTestDirect} disabled={testing} className="px-4 py-2 text-sm text-violet-600 hover:bg-violet-50 rounded-lg border border-violet-200 disabled:opacity-50">
+                {testing ? '测试中...' : '测试连接'}
+              </button>
+              <div className="flex gap-3">
+                <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">取消</button>
+                <button onClick={handleSave} className="px-4 py-2 text-sm text-white rounded-lg" style={{ background: 'var(--primary)' }}>保存</button>
+              </div>
             </div>
           </div>
         </div>

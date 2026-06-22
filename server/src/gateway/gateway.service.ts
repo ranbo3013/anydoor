@@ -107,21 +107,27 @@ export class GatewayService {
   }
 
   /**
-   * Test connectivity to a provider
+   * Test connectivity to a provider by ID
    */
   async testProvider(id: string): Promise<{ success: boolean; message: string; latency?: number }> {
     const provider = store.getProviderById(id);
     if (!provider) {
       return { success: false, message: 'Provider not found' };
     }
+    return this.testProviderConnection(provider.baseUrl, provider.apiKey);
+  }
 
+  /**
+   * Test connectivity to a provider by URL and API key
+   */
+  async testProviderConnection(baseUrl: string, apiKey: string): Promise<{ success: boolean; message: string; latency?: number }> {
     const startTime = Date.now();
     try {
       const https = require('https');
       const http = require('http');
-      const client = provider.baseUrl.startsWith('https') ? https : http;
+      const client = baseUrl.startsWith('https') ? https : http;
 
-      const url = new URL(`${provider.baseUrl.replace(/\/+$/, '')}/models`);
+      const url = new URL(`${baseUrl.replace(/\/+$/, '')}/models`);
       
       return new Promise((resolve) => {
         const req = client.request(
@@ -131,7 +137,7 @@ export class GatewayService {
             path: url.pathname,
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${provider.apiKey}`,
+              'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json',
             },
             timeout: 10000,
