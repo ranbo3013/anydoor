@@ -43,20 +43,45 @@ console.log('[AnyDoor]    Dependencies:', Object.keys(prodPkg.dependencies).join
 const { execSync } = require('child_process');
 console.log('[AnyDoor] 📦 Installing production dependencies (flat node_modules)...');
 try {
-  execSync('npm install --production --no-package-lock', {
+  execSync('npm install --production --no-package-lock 2>&1', {
     cwd: PACK_DIR,
     stdio: 'inherit',
   });
-  console.log('[AnyDoor] ✅ Server pack ready at:', PACK_DIR);
-
-  // 验证关键依赖
-  const nmDir = path.join(PACK_DIR, 'node_modules');
-  if (fs.existsSync(nmDir)) {
-    const deps = fs.readdirSync(nmDir).filter(d => !d.startsWith('.'));
-    console.log('[AnyDoor]    Installed', deps.length, 'packages');
-  }
 } catch (err) {
-  console.error('[AnyDoor] ❌ Failed to install server dependencies.');
-  console.error('[AnyDoor]    Try running: cd server-pack && npm install --production');
+  console.error('[AnyDoor] ❌ npm install failed, trying with registry mirror...');
+  try {
+    execSync('npm install --production --no-package-lock --registry=https://registry.npmmirror.com 2>&1', {
+      cwd: PACK_DIR,
+      stdio: 'inherit',
+    });
+  } catch (err2) {
+    console.error('[AnyDoor] ❌ Failed to install server dependencies with mirror too.');
+    process.exit(1);
+  }
+}
+
+// 5. 验证关键依赖是否安装成功
+const nmDir = path.join(PACK_DIR, 'node_modules');
+if (!fs.existsSync(nmDir)) {
+  console.error('[AnyDoor] ❌ node_modules not created after npm install!');
   process.exit(1);
 }
+
+// 检查关键依赖
+const criticalDeps = ['@nestjs/core', '@nestjs/platform-express', 'express', 'node-fetch'];
+const missingDeps = [];
+for (const dep of criticalDeps) {
+  if (!fs.existsSync(path.join(nmDir, dep))) {
+    missingDeps.push(dep);
+  }
+}
+
+if (missingDeps.length > 0) {
+  console.error('[AnyDoor] ❌ Missing critical dependencies:', missingDeps.join(', '));
+  process.exit(1);
+}
+
+const installedDeps = fs.readdirSync(nmDir).filter(d => !d.startsWith('.'));
+console.log('[AnyDoor] ✅ Server pack ready at:', PACK_DIR);
+console.log('[AnyDoor]    Installed', installedDeps.length, 'packages');
+console.log('[AnyDoor]    All critical dependencies verified ✓');

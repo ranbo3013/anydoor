@@ -121,33 +121,31 @@
     "appId": "com.anydoor.gateway",
     "productName": "AnyDoor",
     "afterPack": "./scripts/afterPack.js",
-    "asar": true,
-    "asarUnpack": [
-      "server-pack/**/*"
-    ],
+    "asar": false,
     "directories": {
       "output": "release"
     },
     "files": [
       "electron/dist/**/*",
-      "!node_modules",
-      "!dist"
+      "!server",
+      "!server-pack",
+      "!dist",
+      "!dist-web",
+      "!src",
+      "!release"
     ],
     "extraResources": [
       {
         "from": "dist-web",
-        "to": "frontend",
-        "filter": ["**/*"]
+        "to": "frontend"
       },
       {
         "from": "server-pack",
-        "to": "server",
-        "filter": ["**/*"]
+        "to": "server"
       },
       {
         "from": "electron/assets",
-        "to": "assets",
-        "filter": ["**/*"]
+        "to": "assets"
       }
     ],
     "mac": {
