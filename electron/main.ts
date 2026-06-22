@@ -131,7 +131,7 @@ function startServer(): Promise<void> {
     // 关键：打包后的 App 里没有 node 命令，必须用 Electron 自带的 Node.js 运行时
     const { fork } = require('child_process') as typeof import('child_process');
     const serverDir = getServerDir();
-    const serverEntry = path.join(serverDir, 'main.js');
+    const serverEntry = path.join(serverDir, 'server.js');
 
     log(`Server entry: ${serverEntry}`);
     log(`Server dir exists: ${fs.existsSync(serverDir)}`);
