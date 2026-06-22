@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnyDoor - 设置</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style type="text/tailwindcss">
+@theme {
+  --color-primary: #6C5CE7;
+  --color-primary-hover: #5A4BD1;
+  --color-primary-light: #EDE9FE;
+  --color-on-primary: #FFFFFF;
+  --color-background: #F5F5F7;
+  --color-surface: #FFFFFF;
+  --color-surface-container: #F0F0F3;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-container-low: #F8F8FA;
+  --color-surface-container-high: #E8E8EC;
+  --color-surface-container-highest: #DDDDE2;
+  --color-on-surface: #1A1A2E;
+  --color-on-surface-variant: #6B7280;
+  --color-outline: #E5E7EB;
+  --color-outline-variant: #D1D5DB;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-sidebar: #1A1A2E;
+  --color-sidebar-text: #A0A0B8;
+  --color-sidebar-active: #6C5CE7;
+  --color-sidebar-hover: #2A2A42;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-dialog: 0 20px 60px rgba(0,0,0,0.15);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Noto Sans SC", system-ui, sans-serif;
+}
+</style>
+</head>
+<body class="bg-background font-sans text-on-surface">
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-56 bg-sidebar flex flex-col shrink-0">
+    <div class="px-5 py-5 flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+        <i data-lucide="door-open" class="w-5 h-5 text-on-primary"></i>
+      </div>
+      <span class="text-white font-semibold text-base tracking-tight">AnyDoor</span>
+    </div>
+    <nav class="flex-1 px-3 mt-2 space-y-1">
+      <a href="home.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>仪表盘
+      </a>
+      <a href="providers.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="server" class="w-4 h-4"></i>供应商
+      </a>
+      <a href="routes.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="route" class="w-4 h-4"></i>路由
+      </a>
+      <a href="logs.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="file-text" class="w-4 h-4"></i>请求日志
+      </a>
+      <a href="settings.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-sidebar-active text-white text-sm font-medium">
+        <i data-lucide="settings" class="w-4 h-4"></i>设置
+      </a>
+    </nav>
+    <div class="px-3 pb-4">
+      <div class="px-3 py-2.5 rounded-lg bg-sidebar-hover">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+          <span class="text-sidebar-text text-xs">网关运行中</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0 overflow-y-auto">
+    <header class="px-8 py-5 border-b border-outline">
+      <h1 class="text-xl font-semibold text-on-surface">设置</h1>
+    </header>
+
+    <div class="p-8 max-w-2xl">
+      <!-- Gateway Settings -->
+      <div class="mb-8">
+        <h2 class="text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">网关配置</h2>
+        <div class="bg-surface rounded-lg shadow-card divide-y divide-outline-variant/50">
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">监听端口</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">网关服务监听的本地端口</div>
+            </div>
+            <div class="bg-surface-container rounded-md px-3 py-1.5 text-sm font-mono text-on-surface w-24 text-center">3000</div>
+          </div>
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">代理密钥</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">CLI 工具连接网关时使用的 API Key</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="bg-surface-container rounded-md px-3 py-1.5 text-sm font-mono text-on-surface-variant">••••••••</div>
+              <button class="bg-surface-container text-on-surface-variant px-2 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">自动启动</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">开机时自动启动网关服务</div>
+            </div>
+            <button class="relative w-10 h-6 rounded-full bg-primary transition-colors" id="toggle-autostart">
+              <span class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"></span>
+            </button>
+          </div>
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">SSE 流式传输</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">启用流式事件实时转换</div>
+            </div>
+            <button class="relative w-10 h-6 rounded-full bg-primary transition-colors" id="toggle-sse">
+              <span class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Settings -->
+      <div class="mb-8">
+        <h2 class="text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">数据管理</h2>
+        <div class="bg-surface rounded-lg shadow-card divide-y divide-outline-variant/50">
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">日志保留天数</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">超过保留天数的请求日志将被自动清除</div>
+            </div>
+            <div class="bg-surface-container rounded-md px-3 py-1.5 text-sm font-mono text-on-surface w-24 text-center">30</div>
+          </div>
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">导出配置</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">将供应商和路由配置导出为 JSON 文件</div>
+            </div>
+            <button class="bg-surface-container text-on-surface px-3 py-1.5 rounded-md text-xs font-medium hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>导出
+            </button>
+          </div>
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">导入配置</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">从 JSON 文件导入供应商和路由配置</div>
+            </div>
+            <button class="bg-surface-container text-on-surface px-3 py-1.5 rounded-md text-xs font-medium hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i>导入
+            </button>
+          </div>
+          <div class="px-5 py-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-on-surface">清除所有数据</div>
+              <div class="text-xs text-on-surface-variant mt-0.5">删除所有供应商、路由和日志数据</div>
+            </div>
+            <button class="bg-error/10 text-error px-3 py-1.5 rounded-md text-xs font-medium hover:bg-error/20 transition-colors" id="btn-reset-all">清除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- About -->
+      <div>
+        <h2 class="text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">关于</h2>
+        <div class="bg-surface rounded-lg shadow-card px-5 py-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+              <i data-lucide="door-open" class="w-5 h-5 text-on-primary"></i>
+            </div>
+            <div>
+              <div class="text-sm font-semibold text-on-surface">AnyDoor</div>
+              <div class="text-xs text-on-surface-variant">v1.0.0</div>
+            </div>
+          </div>
+          <p class="text-xs text-on-surface-variant leading-relaxed">本地 AI 模型网关，让 Codex 和 Claude Code 等编程工具灵活连接 Agnes、DeepSeek 等大模型。支持 OpenAI Responses API 与 Chat Completions 协议自动转换。</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+$(function(){
+  lucide.createIcons();
+
+  // Toggle switches
+  $('#toggle-autostart, #toggle-sse').on('click', function(){
+    const $btn = $(this);
+    const isOn = $btn.hasClass('bg-primary');
+    $btn.toggleClass('bg-primary bg-surface-container-high');
+    $btn.find('span').toggleClass('right-0.5 left-0.5');
+    console.log('Toggle:', isOn ? 'off' : 'on');
+  });
+
+  // Reset
+  $('#btn-reset-all').on('click', function(){
+    console.log('清除所有数据：应弹出确认对话框');
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnyDoor - 供应商</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style type="text/tailwindcss">
+@theme {
+  --color-primary: #6C5CE7;
+  --color-primary-hover: #5A4BD1;
+  --color-primary-light: #EDE9FE;
+  --color-on-primary: #FFFFFF;
+  --color-background: #F5F5F7;
+  --color-surface: #FFFFFF;
+  --color-surface-container: #F0F0F3;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-container-low: #F8F8FA;
+  --color-surface-container-high: #E8E8EC;
+  --color-surface-container-highest: #DDDDE2;
+  --color-on-surface: #1A1A2E;
+  --color-on-surface-variant: #6B7280;
+  --color-outline: #E5E7EB;
+  --color-outline-variant: #D1D5DB;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-sidebar: #1A1A2E;
+  --color-sidebar-text: #A0A0B8;
+  --color-sidebar-active: #6C5CE7;
+  --color-sidebar-hover: #2A2A42;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-dialog: 0 20px 60px rgba(0,0,0,0.15);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Noto Sans SC", system-ui, sans-serif;
+}
+</style>
+</head>
+<body class="bg-background font-sans text-on-surface">
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-56 bg-sidebar flex flex-col shrink-0">
+    <div class="px-5 py-5 flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+        <i data-lucide="door-open" class="w-5 h-5 text-on-primary"></i>
+      </div>
+      <span class="text-white font-semibold text-base tracking-tight">AnyDoor</span>
+    </div>
+    <nav class="flex-1 px-3 mt-2 space-y-1">
+      <a href="home.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>仪表盘
+      </a>
+      <a href="providers.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-sidebar-active text-white text-sm font-medium">
+        <i data-lucide="server" class="w-4 h-4"></i>供应商
+      </a>
+      <a href="routes.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="route" class="w-4 h-4"></i>路由
+      </a>
+      <a href="logs.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="file-text" class="w-4 h-4"></i>请求日志
+      </a>
+      <a href="settings.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="settings" class="w-4 h-4"></i>设置
+      </a>
+    </nav>
+    <div class="px-3 pb-4">
+      <div class="px-3 py-2.5 rounded-lg bg-sidebar-hover">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+          <span class="text-sidebar-text text-xs">网关运行中</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0 overflow-y-auto">
+    <header class="px-8 py-5 flex items-center justify-between border-b border-outline">
+      <h1 class="text-xl font-semibold text-on-surface">供应商</h1>
+      <button id="btn-add-provider" class="bg-primary text-on-primary px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all inline-flex items-center gap-2">
+        <i data-lucide="plus" class="w-4 h-4"></i>添加供应商
+      </button>
+    </header>
+
+    <div class="p-8">
+      <!-- Provider Cards -->
+      <div class="grid grid-cols-2 gap-5" id="provider-list">
+        <!-- Agnes -->
+        <div class="bg-surface rounded-lg shadow-card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+                <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-on-surface">Agnes</div>
+                <div class="text-xs text-on-surface-variant">OpenAI Chat Completions</div>
+              </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">
+              <span class="w-1.5 h-1.5 rounded-full bg-success"></span>已连接
+            </span>
+          </div>
+          <div class="space-y-2 mb-4">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-on-surface-variant">接口地址</span>
+              <span class="text-on-surface font-mono">apihub.agnes-ai.com/v1</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-on-surface-variant">API 密钥</span>
+              <span class="text-on-surface font-mono">sk-****7f3a</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-on-surface-variant">模型</span>
+              <span class="text-on-surface">agnes-2.0-flash, agnes-2.0-flash-lite</span>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button class="flex-1 bg-surface-container text-on-surface px-3 py-1.5 rounded-md text-xs font-medium hover:bg-surface-container-high transition-colors" id="btn-test-agnes">测试连接</button>
+            <button class="bg-surface-container text-on-surface-variant px-3 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors" id="btn-edit-agnes">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+            </button>
+            <button class="bg-surface-container text-error px-3 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors" id="btn-delete-agnes">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- DeepSeek -->
+        <div class="bg-surface rounded-lg shadow-card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
+                <i data-lucide="brain" class="w-5 h-5 text-white"></i>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-on-surface">DeepSeek</div>
+                <div class="text-xs text-on-surface-variant">OpenAI Chat Completions</div>
+              </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">
+              <span class="w-1.5 h-1.5 rounded-full bg-success"></span>已连接
+            </span>
+          </div>
+          <div class="space-y-2 mb-4">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-on-surface-variant">接口地址</span>
+              <span class="text-on-surface font-mono">api.deepseek.com/v1</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-on-surface-variant">API 密钥</span>
+              <span class="text-on-surface font-mono">sk-****b2c1</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-on-surface-variant">模型</span>
+              <span class="text-on-surface">deepseek-chat, deepseek-coder</span>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button class="flex-1 bg-surface-container text-on-surface px-3 py-1.5 rounded-md text-xs font-medium hover:bg-surface-container-high transition-colors" id="btn-test-deepseek">测试连接</button>
+            <button class="bg-surface-container text-on-surface-variant px-3 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors" id="btn-edit-deepseek">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+            </button>
+            <button class="bg-surface-container text-error px-3 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors" id="btn-delete-deepseek">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add/Edit Provider Modal -->
+<div id="modal-provider" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 hidden">
+  <div class="bg-surface rounded-xl shadow-dialog max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-lg font-semibold text-on-surface" id="modal-title">添加供应商</h2>
+      <button id="btn-close-modal" class="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center transition-colors">
+        <i data-lucide="x" class="w-4 h-4 text-on-surface-variant"></i>
+      </button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-on-surface mb-1.5">名称</label>
+        <input id="input-name" class="w-full bg-surface-container border-none rounded-md px-3 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors" placeholder="例如：Agnes"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-on-surface mb-1.5">API 格式</label>
+        <select id="input-format" class="w-full bg-surface-container border-none rounded-md px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors">
+          <option>OpenAI Chat Completions</option>
+          <option>Anthropic Messages</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-on-surface mb-1.5">接口地址</label>
+        <input id="input-baseurl" class="w-full bg-surface-container border-none rounded-md px-3 py-2.5 text-sm text-on-surface font-mono placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors" placeholder="https://api.example.com/v1"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-on-surface mb-1.5">API 密钥</label>
+        <input id="input-apikey" type="password" class="w-full bg-surface-container border-none rounded-md px-3 py-2.5 text-sm text-on-surface font-mono placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors" placeholder="sk-..."/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-on-surface mb-1.5">模型列表</label>
+        <input id="input-models" class="w-full bg-surface-container border-none rounded-md px-3 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors" placeholder="用逗号分隔，例如：model-a, model-b"/>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-6">
+      <button id="btn-cancel-modal" class="flex-1 bg-surface-container text-on-surface px-4 py-2.5 rounded-md text-sm font-medium hover:bg-surface-container-high transition-colors">取消</button>
+      <button id="btn-save-provider" class="flex-1 bg-primary text-on-primary px-4 py-2.5 rounded-md text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+$(function(){
+  lucide.createIcons();
+
+  // Open modal
+  $('#btn-add-provider').on('click', function(){
+    $('#modal-title').text('添加供应商');
+    $('#modal-provider').removeClass('hidden');
+  });
+
+  // Close modal
+  $('#btn-close-modal, #btn-cancel-modal').on('click', function(){
+    $('#modal-provider').addClass('hidden');
+  });
+
+  // Test connection - 应调用后端 /api/gateway/providers/:id/test 接口
+  $('[id^="btn-test-"]').on('click', function(){
+    console.log('测试连接：应调用后端 API 测试供应商连通性');
+    const $btn = $(this);
+    $btn.text('测试中...').prop('disabled', true);
+    setTimeout(function(){ $btn.text('测试连接').prop('disabled', false); }, 1500);
+  });
+
+  // Edit - 应打开编辑模态框并填入现有数据
+  $('[id^="btn-edit-"]').on('click', function(){
+    console.log('编辑供应商：应打开模态框并预填数据');
+    $('#modal-title').text('编辑供应商');
+    $('#modal-provider').removeClass('hidden');
+  });
+
+  // Delete - 应弹出确认对话框后调用后端 DELETE 接口
+  $('[id^="btn-delete-"]').on('click', function(){
+    console.log('删除供应商：应弹出确认对话框后调用 DELETE /api/gateway/providers/:id');
+  });
+
+  // Save
+  $('#btn-save-provider').on('click', function(){
+    console.log('保存供应商：应调用 POST /api/gateway/providers 接口');
+    $('#modal-provider').addClass('hidden');
+  });
+});
+</script>
+</body>
+</html>

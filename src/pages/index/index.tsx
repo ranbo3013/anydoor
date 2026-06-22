@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from "react"
 import { View, Text, ScrollView } from "@tarojs/components"
 import { Network } from "@/network"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Card, CardHeader, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Activity, Server, Route, FileText, Plus, Trash2, Wifi, WifiOff, Copy, Check, Settings } from "lucide-react-taro"
+import {
+  LayoutDashboard, Server, Route, FileText, Settings,
+  Plus, Trash2, WifiOff, Copy, Check,
+  DoorOpen, ArrowRight, Pencil, Sparkles, Brain,
+  Terminal, MessageSquare, Code, Download, Upload,
+  Eye, EyeOff
+} from "lucide-react-taro"
 import Taro from "@tarojs/taro"
 
 // ========== Types ==========
@@ -56,6 +59,15 @@ interface GatewayStatus {
   providers: { id: string; name: string; connected: boolean }[]
 }
 
+// ========== Sidebar Navigation ==========
+const NAV_ITEMS = [
+  { key: "dashboard", label: "仪表盘", Icon: LayoutDashboard },
+  { key: "providers", label: "供应商", Icon: Server },
+  { key: "routes", label: "路由", Icon: Route },
+  { key: "logs", label: "请求日志", Icon: FileText },
+  { key: "settings", label: "设置", Icon: Settings },
+]
+
 // ========== Provider Form ==========
 function ProviderForm({ provider, onSave, onCancel }: {
   provider?: Provider
@@ -70,6 +82,7 @@ function ProviderForm({ provider, onSave, onCancel }: {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [savedProviderId, setSavedProviderId] = useState(provider?.id || "")
+  const [showKey, setShowKey] = useState(false)
 
   const handleTest = async () => {
     if (!savedProviderId) {
@@ -102,10 +115,7 @@ function ProviderForm({ provider, onSave, onCancel }: {
 
   const handleSave = () => {
     const data = {
-      name,
-      type,
-      baseUrl,
-      apiKey,
+      name, type, baseUrl, apiKey,
       models: models.split(",").map(m => m.trim()).filter(Boolean),
       enabled: provider?.enabled ?? true,
     }
@@ -113,66 +123,77 @@ function ProviderForm({ provider, onSave, onCancel }: {
   }
 
   const apiFormats: { value: Provider["type"]; label: string }[] = [
-    { value: "openai_chat", label: "OpenAI Chat" },
+    { value: "openai_chat", label: "OpenAI Chat Completions" },
     { value: "openai_responses", label: "OpenAI Responses" },
-    { value: "anthropic", label: "Anthropic" },
+    { value: "anthropic", label: "Anthropic Messages" },
   ]
 
   return (
     <View className="flex flex-col gap-4">
       <View className="flex flex-col gap-2">
-        <Label>名称</Label>
-        <View className="bg-slate-700 rounded-md px-3 py-2">
-          <Input className="w-full bg-transparent text-slate-200" placeholder="例如 Agnes, DeepSeek" value={name} onInput={e => setName(e.detail.value)} />
+        <Label className="text-sm font-medium text-on-surface">名称</Label>
+        <View className="bg-surface-container rounded-md px-3 py-2">
+          <Input className="w-full bg-transparent text-sm text-on-surface" placeholder="例如：Agnes" value={name} onInput={e => setName(e.detail.value)} />
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>API 格式</Label>
+        <Label className="text-sm font-medium text-on-surface">API 格式</Label>
         <View className="flex flex-row gap-2">
           {apiFormats.map(f => (
-            <View key={f.value} onClick={() => setType(f.value)} className={`px-3 py-2 rounded-md ${type === f.value ? "bg-emerald-500 text-slate-900" : "bg-slate-700 text-slate-400"}`}>
-              <Text className="block">{f.label}</Text>
+            <View
+              key={f.value}
+              onClick={() => setType(f.value)}
+              className={`px-3 py-2 rounded-md ${type === f.value ? "bg-primary" : "bg-surface-container"}`}
+            >
+              <Text className={`block text-xs ${type === f.value ? "text-on-primary font-medium" : "text-on-surface-variant"}`}>
+                {f.label}
+              </Text>
             </View>
           ))}
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>接口地址</Label>
-        <View className="bg-slate-700 rounded-md px-3 py-2">
-          <Input className="w-full bg-transparent text-slate-200" placeholder="https://api.example.com/v1" value={baseUrl} onInput={e => setBaseUrl(e.detail.value)} />
+        <Label className="text-sm font-medium text-on-surface">接口地址</Label>
+        <View className="bg-surface-container rounded-md px-3 py-2">
+          <Input className="w-full bg-transparent text-sm text-on-surface font-mono" placeholder="https://api.example.com/v1" value={baseUrl} onInput={e => setBaseUrl(e.detail.value)} />
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>API 密钥</Label>
-        <View className="bg-slate-700 rounded-md px-3 py-2">
-          <Input className="w-full bg-transparent text-slate-200" placeholder="sk-xxx" value={apiKey} onInput={e => setApiKey(e.detail.value)} type="safe-password" />
+        <Label className="text-sm font-medium text-on-surface">API 密钥</Label>
+        <View className="flex flex-row items-center gap-2">
+          <View className="flex-1 bg-surface-container rounded-md px-3 py-2">
+            <Input className="w-full bg-transparent text-sm text-on-surface font-mono" placeholder="sk-..." value={apiKey} onInput={e => setApiKey(e.detail.value)} type={showKey ? "text" : "safe-password"} />
+          </View>
+          <View onClick={() => setShowKey(!showKey)} className="p-2 bg-surface-container rounded-md">
+            {showKey ? <EyeOff size={16} color="#6B7280" /> : <Eye size={16} color="#6B7280" />}
+          </View>
         </View>
       </View>
 
       <View className="flex flex-col gap-2">
-        <Label>模型列表（逗号分隔）</Label>
-        <View className="bg-slate-700 rounded-md px-3 py-2">
-          <Input className="w-full bg-transparent text-slate-200" placeholder="agnes-flash, deepseek-chat" value={models} onInput={e => setModels(e.detail.value)} />
+        <Label className="text-sm font-medium text-on-surface">模型列表</Label>
+        <View className="bg-surface-container rounded-md px-3 py-2">
+          <Input className="w-full bg-transparent text-sm text-on-surface" placeholder="用逗号分隔，例如：model-a, model-b" value={models} onInput={e => setModels(e.detail.value)} />
         </View>
       </View>
 
       {testResult && (
-        <View className={`p-3 rounded-md ${testResult.success ? "bg-emerald-900 border border-emerald-700" : "bg-red-900 border border-red-700"}`}>
-          <Text className={`block text-sm ${testResult.success ? "text-emerald-400" : "text-red-400"}`}>{testResult.message}</Text>
+        <View className={`p-3 rounded-md ${testResult.success ? "bg-success bg-opacity-10 border border-success" : "bg-error bg-opacity-10 border border-error"}`}>
+          <Text className={`block text-xs ${testResult.success ? "text-success" : "text-error"}`}>{testResult.message}</Text>
         </View>
       )}
 
       <View className="flex flex-row gap-3 mt-2">
-        <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={onCancel}>
+        <Button variant="outline" className="flex-1 border-outline-variant text-on-surface" onClick={onCancel}>
           <Text>取消</Text>
         </Button>
-        <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={handleTest} disabled={testing || !baseUrl || !apiKey}>
-          <Text>{testing ? "测试中..." : "测试"}</Text>
+        <Button variant="outline" className="flex-1 border-outline-variant text-on-surface" onClick={handleTest} disabled={testing || !baseUrl || !apiKey}>
+          <Text>{testing ? "测试中..." : "测试连接"}</Text>
         </Button>
-        <Button className="flex-1 bg-emerald-500 text-slate-900" onClick={handleSave} disabled={!name || !baseUrl || !apiKey}>
+        <Button className="flex-1 bg-primary text-on-primary" onClick={handleSave} disabled={!name || !baseUrl || !apiKey}>
           <Text>保存</Text>
         </Button>
       </View>
@@ -181,7 +202,7 @@ function ProviderForm({ provider, onSave, onCancel }: {
 }
 
 // ========== 仪表盘 ==========
-function DashboardTab({ status, providers, routes }: {
+function DashboardView({ status, providers, routes }: {
   status: GatewayStatus | null
   providers: Provider[]
   routes: RouteConfig[]
@@ -206,95 +227,136 @@ function DashboardTab({ status, providers, routes }: {
   const enabledProviders = providers.filter(p => p.enabled)
 
   return (
-    <View className="flex flex-col gap-4">
-      {/* 状态卡片 */}
-      <Card className="bg-slate-800 border-slate-700">
-        <CardContent className="p-4">
-          <View className="flex flex-row items-center gap-3 mb-4">
-            <View className={`w-3 h-3 rounded-full ${status?.running ? "bg-emerald-500" : "bg-red-500"}`} />
-            <Text className="block text-lg font-semibold text-slate-200">
-              网关{status?.running ? "运行中" : "已停止"}
-            </Text>
-          </View>
-          <View className="flex flex-row gap-4">
-            <View className="flex-1 bg-slate-700 rounded-lg p-3">
-              <Text className="block text-xs text-slate-400 mb-1">总请求数</Text>
-              <Text className="block text-xl font-bold text-slate-200">{status?.totalRequests || 0}</Text>
+    <ScrollView className="flex-1 overflow-y-auto" scrollY>
+      <View className="p-8">
+        {/* 统计卡片 */}
+        <View className="flex flex-row gap-5 mb-6">
+          <View className="flex-1 bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="flex flex-row items-center gap-3 mb-3">
+              <View className="w-10 h-10 rounded-lg bg-primary bg-opacity-10 flex items-center justify-center">
+                <LayoutDashboard size={20} color="#6C5CE7" />
+              </View>
+              <Text className="block text-sm text-on-surface-variant">网关状态</Text>
             </View>
-            <View className="flex-1 bg-slate-700 rounded-lg p-3">
-              <Text className="block text-xs text-slate-400 mb-1">活跃供应商</Text>
-              <Text className="block text-xl font-bold text-emerald-400">{enabledProviders.length}</Text>
-            </View>
-            <View className="flex-1 bg-slate-700 rounded-lg p-3">
-              <Text className="block text-xs text-slate-400 mb-1">活跃路由</Text>
-              <Text className="block text-xl font-bold text-blue-400">{enabledRoutes.length}</Text>
+            <View className="flex flex-row items-center gap-2">
+              <View className={`w-2 h-2 rounded-full ${status?.running ? "bg-success" : "bg-error"}`} />
+              <Text className="block text-lg font-semibold text-on-surface">{status?.running ? "运行中" : "已停止"}</Text>
             </View>
           </View>
-        </CardContent>
-      </Card>
 
-      {/* 路由地图 */}
-      <Card className="bg-slate-800 border-slate-700">
-        <CardHeader className="p-4 pb-2">
-          <View className="flex flex-row items-center gap-2">
-            <Route size={18} color="#10b981" />
-            <Text className="block text-base font-semibold text-slate-200">路由地图</Text>
+          <View className="flex-1 bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="flex flex-row items-center gap-3 mb-3">
+              <View className="w-10 h-10 rounded-lg bg-success bg-opacity-10 flex items-center justify-center">
+                <Server size={20} color="#10B981" />
+              </View>
+              <Text className="block text-sm text-on-surface-variant">活跃供应商</Text>
+            </View>
+            <Text className="block text-2xl font-bold text-on-surface">{enabledProviders.length}</Text>
           </View>
-        </CardHeader>
-        <CardContent className="p-4 pt-2">
+
+          <View className="flex-1 bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="flex flex-row items-center gap-3 mb-3">
+              <View className="w-10 h-10 rounded-lg bg-blue-500 bg-opacity-10 flex items-center justify-center">
+                <Route size={20} color="#3B82F6" />
+              </View>
+              <Text className="block text-sm text-on-surface-variant">活跃路由</Text>
+            </View>
+            <Text className="block text-2xl font-bold text-on-surface">{enabledRoutes.length}</Text>
+          </View>
+
+          <View className="flex-1 bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="flex flex-row items-center gap-3 mb-3">
+              <View className="w-10 h-10 rounded-lg bg-amber-500 bg-opacity-10 flex items-center justify-center">
+                <FileText size={20} color="#F59E0B" />
+              </View>
+              <Text className="block text-sm text-on-surface-variant">总请求数</Text>
+            </View>
+            <Text className="block text-2xl font-bold text-on-surface">{status?.totalRequests || 0}</Text>
+          </View>
+        </View>
+
+        {/* 路由地图 */}
+        <View className="bg-surface rounded-lg p-5 mb-6" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <Text className="block text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">路由地图</Text>
           {enabledRoutes.length === 0 ? (
-            <Text className="block text-sm text-slate-500">暂无路由配置，请前往「路由」标签页设置</Text>
+            <View className="flex flex-col items-center py-8">
+              <Route size={32} color="#D1D5DB" />
+              <Text className="block text-sm text-on-surface-variant mt-3">暂无路由配置</Text>
+              <Text className="block text-xs text-on-surface-variant mt-1">前往「路由」页面添加</Text>
+            </View>
           ) : (
-            <View className="flex flex-col gap-2">
+            <View className="flex flex-col gap-3">
               {enabledRoutes.map(route => (
-                <View key={route.id} className="flex flex-row items-center gap-3 bg-slate-700 rounded-lg p-3">
-                  <Badge variant="secondary" className="bg-blue-500 text-blue-100 border-blue-400">
-                    <Text className="text-xs">{route.cliTool}</Text>
-                  </Badge>
-                  <Text className="block text-slate-500">→</Text>
-                  <Badge variant="secondary" className="bg-emerald-500 text-emerald-100 border-emerald-400">
-                    <Text className="text-xs">{route.providerName || route.providerId}</Text>
-                  </Badge>
-                  <Badge variant="outline" className="border-slate-600 text-slate-400">
-                    <Text className="text-xs">{route.model}</Text>
-                  </Badge>
+                <View key={route.id} className="flex flex-row items-center gap-4 p-4 bg-surface-container-low rounded-lg">
+                  <View className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center">
+                    <Terminal size={24} color="#FFFFFF" />
+                  </View>
+                  <View>
+                    <Text className="block text-sm font-semibold text-on-surface">{route.cliTool}</Text>
+                    <Text className="block text-xs text-on-surface-variant mt-1">
+                      {route.cliTool === "codex" ? "OpenAI Responses API" : "Anthropic Messages API"}
+                    </Text>
+                  </View>
+                  <View className="flex flex-row items-center gap-2 mx-4">
+                    <View className="h-px w-8 bg-outline-variant" />
+                    <ArrowRight size={16} color="#6C5CE7" />
+                    <View className="h-px w-8 bg-outline-variant" />
+                  </View>
+                  <View className="flex flex-row items-center gap-3">
+                    <View className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+                      <Sparkles size={20} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text className="block text-sm font-semibold text-on-surface">{route.providerName || route.providerId}</Text>
+                      <Text className="block text-xs text-on-surface-variant">{route.model}</Text>
+                    </View>
+                  </View>
                   <View className="flex-1" />
-                  <View onClick={() => copyConfig(route.cliTool)} className="p-1">
-                    {copiedCli === route.cliTool ? <Check size={14} color="#10b981" /> : <Copy size={14} color="#94a3b8" />}
+                  <View onClick={() => copyConfig(route.cliTool)} className="p-2 bg-surface-container rounded-md">
+                    {copiedCli === route.cliTool ? <Check size={14} color="#10B981" /> : <Copy size={14} color="#6B7280" />}
                   </View>
                 </View>
               ))}
             </View>
           )}
-        </CardContent>
-      </Card>
+        </View>
 
-      {/* 配置指南 */}
-      <Card className="bg-slate-800 border-slate-700">
-        <CardHeader className="p-4 pb-2">
-          <View className="flex flex-row items-center gap-2">
-            <Settings size={18} color="#f59e0b" />
-            <Text className="block text-base font-semibold text-slate-200">CLI 配置指南</Text>
+        {/* 配置指南 */}
+        <View className="bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <View className="flex flex-row items-center gap-2 mb-4">
+            <Code size={16} color="#6B7280" />
+            <Text className="block text-sm font-semibold text-on-surface-variant uppercase tracking-wider">CLI 配置指南</Text>
           </View>
-        </CardHeader>
-        <CardContent className="p-4 pt-2">
-          <Text className="block text-sm text-slate-400 mb-3">将你的 CLI 工具配置为通过网关代理连接：</Text>
-          <View className="bg-slate-900 rounded-lg p-3 mb-2">
-            <Text className="block text-xs text-amber-400 mb-1">Codex (~/.codex/config.toml)</Text>
-            <Text className="block text-xs text-slate-300 font-mono">base_url = &quot;http://localhost:3000/api/gateway/proxy&quot;{"\n"}wire_api = &quot;responses&quot;</Text>
+          <View className="p-4 bg-surface-container-low rounded-lg border border-outline-variant mb-3">
+            <View className="flex flex-row items-center gap-2 mb-2">
+              <Terminal size={14} color="#6B7280" />
+              <Text className="block text-xs font-semibold text-on-surface-variant">Codex (~/.codex/config.toml)</Text>
+            </View>
+            <View className="bg-surface-container rounded-md p-3">
+              <Text className="block text-xs font-mono text-on-surface">
+                {`base_url = "http://localhost:${status?.proxyPort || 3000}/api/gateway/proxy"\nwire_api = "responses"`}
+              </Text>
+            </View>
           </View>
-          <View className="bg-slate-900 rounded-lg p-3 mb-2">
-            <Text className="block text-xs text-amber-400 mb-1">Claude Code（环境变量）</Text>
-            <Text className="block text-xs text-slate-300 font-mono">ANTHROPIC_BASE_URL=http://localhost:3000/api/gateway/proxy{"\n"}ANTHROPIC_API_KEY=gateway-proxy-key</Text>
+          <View className="p-4 bg-surface-container-low rounded-lg border border-outline-variant">
+            <View className="flex flex-row items-center gap-2 mb-2">
+              <MessageSquare size={14} color="#6B7280" />
+              <Text className="block text-xs font-semibold text-on-surface-variant">Claude Code (~/.zshrc)</Text>
+            </View>
+            <View className="bg-surface-container rounded-md p-3">
+              <Text className="block text-xs font-mono text-on-surface">
+                {`export ANTHROPIC_BASE_URL="http://localhost:${status?.proxyPort || 3000}/api/gateway/proxy"\nexport ANTHROPIC_API_KEY="gateway-proxy-key"`}
+              </Text>
+            </View>
           </View>
-        </CardContent>
-      </Card>
-    </View>
+        </View>
+      </View>
+    </ScrollView>
   )
 }
 
 // ========== 供应商 ==========
-function ProvidersTab({ providers, refresh }: {
+function ProvidersView({ providers, refresh }: {
   providers: Provider[]
   refresh: () => void
 }) {
@@ -304,17 +366,9 @@ function ProvidersTab({ providers, refresh }: {
   const handleSave = async (data: any) => {
     try {
       if (editingProvider) {
-        await Network.request({
-          url: `/api/gateway/providers/${editingProvider.id}`,
-          method: "PUT",
-          data,
-        })
+        await Network.request({ url: `/api/gateway/providers/${editingProvider.id}`, method: "PUT", data })
       } else {
-        await Network.request({
-          url: "/api/gateway/providers",
-          method: "POST",
-          data,
-        })
+        await Network.request({ url: "/api/gateway/providers", method: "POST", data })
       }
       setShowDialog(false)
       setEditingProvider(undefined)
@@ -333,89 +387,90 @@ function ProvidersTab({ providers, refresh }: {
     }
   }
 
-  const handleToggle = async (provider: Provider) => {
-    try {
-      await Network.request({
-        url: `/api/gateway/providers/${provider.id}`,
-        method: "PUT",
-        data: { enabled: !provider.enabled },
-      })
-      refresh()
-    } catch (err) {
-      console.error("[Providers] toggle error:", err)
-    }
-  }
+  const providerGradients = [
+    "from-emerald-400 to-teal-500",
+    "from-blue-400 to-indigo-500",
+    "from-amber-400 to-orange-500",
+    "from-rose-400 to-pink-500",
+    "from-cyan-400 to-sky-500",
+  ]
 
   return (
-    <View className="flex flex-col gap-3">
-      <View className="flex flex-row items-center justify-between">
-        <Text className="block text-base font-semibold text-slate-200">模型供应商</Text>
-        <Button className="bg-emerald-500 text-slate-900" size="sm" onClick={() => { setEditingProvider(undefined); setShowDialog(true) }}>
-          <View className="flex flex-row items-center gap-1">
-            <Plus size={14} color="#0f172a" />
-            <Text className="text-xs">添加</Text>
-          </View>
-        </Button>
-      </View>
-
-      {providers.length === 0 ? (
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-8 items-center">
-            <WifiOff size={32} color="#475569" />
-            <Text className="block text-sm text-slate-500 mt-3">暂无供应商配置</Text>
-            <Text className="block text-xs text-slate-600 mt-1">添加一个供应商以开始使用</Text>
-          </CardContent>
-        </Card>
-      ) : (
-        providers.map(provider => (
-          <Card key={provider.id} className="bg-slate-800 border-slate-700">
-            <CardContent className="p-4">
-              <View className="flex flex-row items-center gap-3 mb-3">
-                <View className={`w-3 h-3 rounded-full ${provider.enabled ? "bg-emerald-500" : "bg-slate-600"}`} />
-                <Text className="block text-sm font-semibold text-slate-200 flex-1">{provider.name}</Text>
-                <Switch checked={provider.enabled} onCheckedChange={() => handleToggle(provider)} />
+    <ScrollView className="flex-1 overflow-y-auto" scrollY>
+      <View className="p-8">
+        {providers.length === 0 ? (
+          <View className="bg-surface rounded-lg p-12 flex flex-col items-center" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <WifiOff size={40} color="#D1D5DB" />
+            <Text className="block text-sm text-on-surface-variant mt-4">暂无供应商配置</Text>
+            <Text className="block text-xs text-on-surface-variant mt-1">添加一个供应商以开始使用</Text>
+            <Button className="mt-4 bg-primary text-on-primary" size="sm" onClick={() => { setEditingProvider(undefined); setShowDialog(true) }}>
+              <View className="flex flex-row items-center gap-2">
+                <Plus size={14} color="#FFFFFF" />
+                <Text className="text-xs">添加供应商</Text>
               </View>
-              <View className="flex flex-col gap-2 mb-3">
-                <View className="flex flex-row items-center gap-2">
-                  <Text className="block text-xs text-slate-500 w-16">格式</Text>
-                  <Badge variant="outline" className="border-slate-600">
-                    <Text className="text-xs text-slate-400">{provider.type === "openai_chat" ? "Chat Completions" : provider.type === "openai_responses" ? "Responses" : "Anthropic"}</Text>
+            </Button>
+          </View>
+        ) : (
+          <View className="grid grid-cols-2 gap-5">
+            {providers.map((provider, idx) => (
+              <View key={provider.id} className="bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                <View className="flex flex-row items-center justify-between mb-4">
+                  <View className="flex flex-row items-center gap-3">
+                    <View className={`w-10 h-10 rounded-lg bg-gradient-to-br ${providerGradients[idx % providerGradients.length]} flex items-center justify-center`}>
+                      <Sparkles size={20} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text className="block text-sm font-semibold text-on-surface">{provider.name}</Text>
+                      <Text className="block text-xs text-on-surface-variant">
+                        {provider.type === "openai_chat" ? "OpenAI Chat Completions" : provider.type === "openai_responses" ? "OpenAI Responses" : "Anthropic Messages"}
+                      </Text>
+                    </View>
+                  </View>
+                  <Badge className={provider.enabled ? "bg-success bg-opacity-15 text-success" : "bg-on-surface-variant bg-opacity-10 text-on-surface-variant"}>
+                    <View className="flex flex-row items-center gap-2">
+                      <View className={`w-1 h-1 rounded-full ${provider.enabled ? "bg-success" : "bg-on-surface-variant"}`} />
+                      <Text className="text-xs font-medium">{provider.enabled ? "已连接" : "已断开"}</Text>
+                    </View>
                   </Badge>
                 </View>
-                <View className="flex flex-row items-center gap-2">
-                  <Text className="block text-xs text-slate-500 w-16">接口地址</Text>
-                  <Text className="block text-xs text-slate-400 flex-1" numberOfLines={1}>{provider.baseUrl}</Text>
-                </View>
-                <View className="flex flex-row items-center gap-2">
-                  <Text className="block text-xs text-slate-500 w-16">模型</Text>
-                  <View className="flex flex-row flex-wrap gap-1 flex-1">
-                    {provider.models.map(m => (
-                      <Badge key={m} variant="secondary" className="bg-slate-700 text-slate-300">
-                        <Text className="text-xs">{m}</Text>
-                      </Badge>
-                    ))}
+
+                <View className="flex flex-col gap-2 mb-4">
+                  <View className="flex flex-row items-center justify-between">
+                    <Text className="block text-xs text-on-surface-variant">接口地址</Text>
+                    <Text className="block text-xs text-on-surface font-mono" numberOfLines={1}>{provider.baseUrl}</Text>
+                  </View>
+                  <View className="flex flex-row items-center justify-between">
+                    <Text className="block text-xs text-on-surface-variant">API 密钥</Text>
+                    <Text className="block text-xs text-on-surface font-mono">sk-****{provider.apiKey?.slice(-4) || ""}</Text>
+                  </View>
+                  <View className="flex flex-row items-center justify-between">
+                    <Text className="block text-xs text-on-surface-variant">模型</Text>
+                    <Text className="block text-xs text-on-surface" numberOfLines={1}>{provider.models.join(", ")}</Text>
                   </View>
                 </View>
+
+                <View className="flex flex-row gap-2">
+                  <Button variant="outline" className="flex-1 border-outline-variant text-on-surface" size="sm" onClick={() => { setEditingProvider(provider); setShowDialog(true) }}>
+                    <View className="flex flex-row items-center gap-2">
+                      <Pencil size={12} color="#6B7280" />
+                      <Text className="text-xs">编辑</Text>
+                    </View>
+                  </Button>
+                  <Button variant="outline" className="border-error border-opacity-30 text-error" size="sm" onClick={() => handleDelete(provider.id)}>
+                    <Trash2 size={12} color="#EF4444" />
+                  </Button>
+                </View>
               </View>
-              <View className="flex flex-row gap-2">
-                <Button variant="outline" size="sm" className="border-slate-600 text-slate-400 flex-1" onClick={() => { setEditingProvider(provider); setShowDialog(true) }}>
-                  <Text className="text-xs">编辑</Text>
-                </Button>
-                <Button variant="outline" size="sm" className="border-red-800 text-red-400 flex-1" onClick={() => handleDelete(provider.id)}>
-                  <Trash2 size={12} color="#f87171" />
-                  <Text className="text-xs text-red-400">删除</Text>
-                </Button>
-              </View>
-            </CardContent>
-          </Card>
-        ))
-      )}
+            ))}
+          </View>
+        )}
+      </View>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="bg-slate-800 border-slate-700">
+        <DialogContent className="bg-surface max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              <Text className="text-slate-200">{editingProvider ? "编辑供应商" : "添加供应商"}</Text>
+              <Text className="text-on-surface">{editingProvider ? "编辑供应商" : "添加供应商"}</Text>
             </DialogTitle>
           </DialogHeader>
           <ProviderForm
@@ -425,28 +480,26 @@ function ProvidersTab({ providers, refresh }: {
           />
         </DialogContent>
       </Dialog>
-    </View>
+    </ScrollView>
   )
 }
 
 // ========== 路由 ==========
-function RoutesTab({ routes, providers, refresh }: {
+function RoutesView({ routes, providers, refresh }: {
   routes: RouteConfig[]
   providers: Provider[]
   refresh: () => void
 }) {
   const [showDialog, setShowDialog] = useState(false)
   const [editingRoute, setEditingRoute] = useState<RouteConfig | undefined>(undefined)
-
-  // 表单状态
   const [cliTool, setCliTool] = useState("codex")
   const [providerId, setProviderId] = useState("")
   const [model, setModel] = useState("")
 
   const cliTools = [
-    { value: "claude-code", label: "Claude Code" },
-    { value: "codex", label: "Codex" },
-    { value: "cursor", label: "Cursor" },
+    { value: "claude-code", label: "Claude Code", Icon: MessageSquare, gradient: "from-amber-400 to-orange-500" },
+    { value: "codex", label: "Codex", Icon: Terminal, gradient: "from-violet-400 to-purple-500" },
+    { value: "cursor", label: "Cursor", Icon: Code, gradient: "from-cyan-400 to-blue-500" },
   ]
 
   const selectedProvider = providers.find(p => p.id === providerId)
@@ -463,17 +516,9 @@ function RoutesTab({ routes, providers, refresh }: {
     if (!cliTool || !providerId || !model) return
     try {
       if (editingRoute) {
-        await Network.request({
-          url: `/api/gateway/routes/${editingRoute.id}`,
-          method: "PUT",
-          data: { cliTool, providerId, model, enabled: editingRoute.enabled },
-        })
+        await Network.request({ url: `/api/gateway/routes/${editingRoute.id}`, method: "PUT", data: { cliTool, providerId, model, enabled: editingRoute.enabled } })
       } else {
-        await Network.request({
-          url: "/api/gateway/routes",
-          method: "POST",
-          data: { cliTool, providerId, model, enabled: true },
-        })
+        await Network.request({ url: "/api/gateway/routes", method: "POST", data: { cliTool, providerId, model, enabled: true } })
       }
       setShowDialog(false)
       resetForm()
@@ -489,19 +534,6 @@ function RoutesTab({ routes, providers, refresh }: {
       refresh()
     } catch (err) {
       console.error("[Routes] delete error:", err)
-    }
-  }
-
-  const handleToggle = async (route: RouteConfig) => {
-    try {
-      await Network.request({
-        url: `/api/gateway/routes/${route.id}`,
-        method: "PUT",
-        data: { enabled: !route.enabled },
-      })
-      refresh()
-    } catch (err) {
-      console.error("[Routes] toggle error:", err)
     }
   }
 
@@ -521,125 +553,166 @@ function RoutesTab({ routes, providers, refresh }: {
     setShowDialog(true)
   }
 
+  const getCliToolMeta = (tool: string) => cliTools.find(t => t.value === tool) || cliTools[0]
+  const providerGradients = [
+    "from-emerald-400 to-teal-500",
+    "from-blue-400 to-indigo-500",
+    "from-amber-400 to-orange-500",
+    "from-rose-400 to-pink-500",
+  ]
+
   return (
-    <View className="flex flex-col gap-3">
-      <View className="flex flex-row items-center justify-between">
-        <Text className="block text-base font-semibold text-slate-200">路由配置</Text>
-        <Button className="bg-emerald-500 text-slate-900" size="sm" onClick={openAdd}>
-          <View className="flex flex-row items-center gap-1">
-            <Plus size={14} color="#0f172a" />
-            <Text className="text-xs">添加</Text>
+    <ScrollView className="flex-1 overflow-y-auto" scrollY>
+      <View className="p-8">
+        {routes.length === 0 ? (
+          <View className="bg-surface rounded-lg p-12 flex flex-col items-center" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <Route size={40} color="#D1D5DB" />
+            <Text className="block text-sm text-on-surface-variant mt-4">暂无路由配置</Text>
+            <Text className="block text-xs text-on-surface-variant mt-1">添加路由以将 CLI 工具连接到模型供应商</Text>
+            <Button className="mt-4 bg-primary text-on-primary" size="sm" onClick={openAdd}>
+              <View className="flex flex-row items-center gap-2">
+                <Plus size={14} color="#FFFFFF" />
+                <Text className="text-xs">添加路由</Text>
+              </View>
+            </Button>
           </View>
-        </Button>
+        ) : (
+          <View className="flex flex-col gap-4">
+            {routes.map(route => {
+              const cliMeta = getCliToolMeta(route.cliTool)
+              const pIdx = providers.findIndex(p => p.id === route.providerId)
+              return (
+                <View key={route.id} className="bg-surface rounded-lg p-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                  <View className="flex flex-row items-center justify-between">
+                    <View className="flex flex-row items-center gap-4">
+                      <View className={`w-12 h-12 rounded-xl bg-gradient-to-br ${cliMeta.gradient} flex items-center justify-center`}>
+                        <cliMeta.Icon size={24} color="#FFFFFF" />
+                      </View>
+                      <View>
+                        <Text className="block text-base font-semibold text-on-surface">{cliMeta.label}</Text>
+                        <Text className="block text-xs text-on-surface-variant mt-1">
+                          {route.cliTool === "codex" ? "OpenAI Responses API" : "Anthropic Messages API"}
+                        </Text>
+                      </View>
+                      <View className="flex flex-row items-center gap-2 mx-4">
+                        <View className="h-px w-8 bg-outline-variant" />
+                        <ArrowRight size={16} color="#6C5CE7" />
+                        <View className="h-px w-8 bg-outline-variant" />
+                      </View>
+                      <View className="flex flex-row items-center gap-3">
+                        <View className={`w-10 h-10 rounded-lg bg-gradient-to-br ${providerGradients[pIdx >= 0 ? pIdx % providerGradients.length : 0]} flex items-center justify-center`}>
+                          <Brain size={20} color="#FFFFFF" />
+                        </View>
+                        <View>
+                          <Text className="block text-sm font-semibold text-on-surface">{route.providerName || route.providerId}</Text>
+                          <Text className="block text-xs text-on-surface-variant">{route.model}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View className="flex flex-row items-center gap-3">
+                      <Badge className={route.enabled ? "bg-success bg-opacity-15 text-success" : "bg-on-surface-variant bg-opacity-10 text-on-surface-variant"}>
+                        <View className="flex flex-row items-center gap-2">
+                          <View className={`w-1 h-1 rounded-full ${route.enabled ? "bg-success" : "bg-on-surface-variant"}`} />
+                          <Text className="text-xs font-medium">{route.enabled ? "已启用" : "已禁用"}</Text>
+                        </View>
+                      </Badge>
+                      <Button variant="outline" className="border-outline-variant text-on-surface-variant" size="sm" onClick={() => openEdit(route)}>
+                        <Pencil size={12} color="#6B7280" />
+                      </Button>
+                      <Button variant="outline" className="border-error border-opacity-30 text-error" size="sm" onClick={() => handleDelete(route.id)}>
+                        <Trash2 size={12} color="#EF4444" />
+                      </Button>
+                    </View>
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        )}
       </View>
 
-      {routes.length === 0 ? (
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-8 items-center">
-            <Route size={32} color="#475569" />
-            <Text className="block text-sm text-slate-500 mt-3">暂无路由配置</Text>
-            <Text className="block text-xs text-slate-600 mt-1">添加路由以将 CLI 工具连接到模型供应商</Text>
-          </CardContent>
-        </Card>
-      ) : (
-        routes.map(route => (
-          <Card key={route.id} className="bg-slate-800 border-slate-700">
-            <CardContent className="p-4">
-              <View className="flex flex-row items-center gap-3 mb-2">
-                <Badge className="bg-blue-500 text-blue-100 border-blue-400">
-                  <Text className="text-xs">{route.cliTool}</Text>
-                </Badge>
-                <Text className="block text-slate-500">→</Text>
-                <Badge className="bg-emerald-500 text-emerald-100 border-emerald-400">
-                  <Text className="text-xs">{route.providerName || route.providerId}</Text>
-                </Badge>
-                <View className="flex-1" />
-                <Switch checked={route.enabled} onCheckedChange={() => handleToggle(route)} />
-              </View>
-              <View className="flex flex-row items-center gap-2 mb-3">
-                <Text className="block text-xs text-slate-500">模型：</Text>
-                <Badge variant="outline" className="border-slate-600 text-slate-400">
-                  <Text className="text-xs">{route.model}</Text>
-                </Badge>
-              </View>
-              <View className="flex flex-row gap-2">
-                <Button variant="outline" size="sm" className="border-slate-600 text-slate-400 flex-1" onClick={() => openEdit(route)}>
-                  <Text className="text-xs">编辑</Text>
-                </Button>
-                <Button variant="outline" size="sm" className="border-red-800 text-red-400 flex-1" onClick={() => handleDelete(route.id)}>
-                  <Trash2 size={12} color="#f87171" />
-                  <Text className="text-xs text-red-400">删除</Text>
-                </Button>
-              </View>
-            </CardContent>
-          </Card>
-        ))
-      )}
-
       <Dialog open={showDialog} onOpenChange={(open) => { setShowDialog(open); if (!open) resetForm() }}>
-        <DialogContent className="bg-slate-800 border-slate-700">
+        <DialogContent className="bg-surface max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              <Text className="text-slate-200">{editingRoute ? "编辑路由" : "添加路由"}</Text>
+              <Text className="text-on-surface">{editingRoute ? "编辑路由" : "添加路由"}</Text>
             </DialogTitle>
           </DialogHeader>
           <View className="flex flex-col gap-4">
             <View className="flex flex-col gap-2">
-              <Label>CLI 工具</Label>
+              <Label className="text-sm font-medium text-on-surface">CLI 工具</Label>
               <View className="flex flex-row gap-2">
                 {cliTools.map(t => (
-                  <View key={t.value} onClick={() => setCliTool(t.value)} className={`px-3 py-2 rounded-md ${cliTool === t.value ? "bg-blue-500 bg-opacity-20 border border-blue-500" : "bg-slate-700"}`}>
-                    <Text className={`block text-xs ${cliTool === t.value ? "text-blue-400" : "text-slate-400"}`}>{t.label}</Text>
+                  <View
+                    key={t.value}
+                    onClick={() => setCliTool(t.value)}
+                    className={`px-3 py-2 rounded-md ${cliTool === t.value ? "bg-primary" : "bg-surface-container"}`}
+                  >
+                    <Text className={`block text-xs ${cliTool === t.value ? "text-on-primary font-medium" : "text-on-surface-variant"}`}>
+                      {t.label}
+                    </Text>
                   </View>
                 ))}
               </View>
             </View>
 
             <View className="flex flex-col gap-2">
-              <Label>供应商</Label>
+              <Label className="text-sm font-medium text-on-surface">供应商</Label>
               <View className="flex flex-row gap-2 flex-wrap">
                 {providers.map(p => (
-                  <View key={p.id} onClick={() => { setProviderId(p.id); setModel("") }} className={`px-3 py-2 rounded-md ${providerId === p.id ? "bg-emerald-500 bg-opacity-20 border border-emerald-500" : "bg-slate-700"}`}>
-                    <Text className={`block text-xs ${providerId === p.id ? "text-emerald-400" : "text-slate-400"}`}>{p.name}</Text>
+                  <View
+                    key={p.id}
+                    onClick={() => { setProviderId(p.id); setModel("") }}
+                    className={`px-3 py-2 rounded-md ${providerId === p.id ? "bg-primary" : "bg-surface-container"}`}
+                  >
+                    <Text className={`block text-xs ${providerId === p.id ? "text-on-primary font-medium" : "text-on-surface-variant"}`}>
+                      {p.name}
+                    </Text>
                   </View>
                 ))}
               </View>
             </View>
 
             <View className="flex flex-col gap-2">
-              <Label>模型</Label>
+              <Label className="text-sm font-medium text-on-surface">模型</Label>
               {availableModels.length > 0 ? (
                 <View className="flex flex-row gap-2 flex-wrap">
                   {availableModels.map(m => (
-                    <View key={m} onClick={() => setModel(m)} className={`px-3 py-2 rounded-md ${model === m ? "bg-amber-500 bg-opacity-20 border border-amber-500" : "bg-slate-700"}`}>
-                      <Text className={`block text-xs ${model === m ? "text-amber-400" : "text-slate-400"}`}>{m}</Text>
+                    <View
+                      key={m}
+                      onClick={() => setModel(m)}
+                      className={`px-3 py-2 rounded-md ${model === m ? "bg-primary" : "bg-surface-container"}`}
+                    >
+                      <Text className={`block text-xs ${model === m ? "text-on-primary font-medium" : "text-on-surface-variant"}`}>
+                        {m}
+                      </Text>
                     </View>
                   ))}
                 </View>
               ) : (
-                <View className="bg-slate-700 rounded-md px-3 py-2">
-                  <Input className="w-full bg-transparent text-slate-200" placeholder="模型名称" value={model} onInput={e => setModel(e.detail.value)} />
+                <View className="bg-surface-container rounded-md px-3 py-2">
+                  <Input className="w-full bg-transparent text-sm text-on-surface" placeholder="模型名称" value={model} onInput={e => setModel(e.detail.value)} />
                 </View>
               )}
             </View>
 
             <View className="flex flex-row gap-3 mt-2">
-              <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={() => { setShowDialog(false); resetForm() }}>
+              <Button variant="outline" className="flex-1 border-outline-variant text-on-surface" onClick={() => { setShowDialog(false); resetForm() }}>
                 <Text>取消</Text>
               </Button>
-              <Button className="flex-1 bg-emerald-500 text-slate-900" onClick={handleSave} disabled={!cliTool || !providerId || !model}>
+              <Button className="flex-1 bg-primary text-on-primary" onClick={handleSave} disabled={!cliTool || !providerId || !model}>
                 <Text>保存</Text>
               </Button>
             </View>
           </View>
         </DialogContent>
       </Dialog>
-    </View>
+    </ScrollView>
   )
 }
 
 // ========== 日志 ==========
-function LogsTab({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
+function LogsView({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
   const [autoRefresh, setAutoRefresh] = useState(false)
 
   useEffect(() => {
@@ -653,67 +726,196 @@ function LogsTab({ logs, refresh }: { logs: ProxyLog[]; refresh: () => void }) {
     return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`
   }
 
-  return (
-    <View className="flex flex-col gap-3">
-      <View className="flex flex-row items-center justify-between">
-        <Text className="block text-base font-semibold text-slate-200">请求日志</Text>
-        <View className="flex flex-row items-center gap-3">
-          <View className="flex flex-row items-center gap-2" onClick={() => setAutoRefresh(!autoRefresh)}>
-            <View className={`w-2 h-2 rounded-full ${autoRefresh ? "bg-emerald-500" : "bg-slate-600"}`} />
-            <Text className="block text-xs text-slate-400">自动刷新</Text>
-          </View>
-          <Button variant="outline" size="sm" className="border-slate-600 text-slate-400" onClick={refresh}>
-            <Text className="text-xs">刷新</Text>
-          </Button>
-        </View>
-      </View>
+  const getStatusStyle = (code: number) => {
+    if (code >= 200 && code < 300) return "bg-success bg-opacity-15 text-success"
+    if (code >= 400 && code < 500) return "bg-warning bg-opacity-15 text-warning"
+    return "bg-error bg-opacity-15 text-error"
+  }
 
-      {logs.length === 0 ? (
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-8 items-center">
-            <FileText size={32} color="#475569" />
-            <Text className="block text-sm text-slate-500 mt-3">暂无请求日志</Text>
-            <Text className="block text-xs text-slate-600 mt-1">当网关转发请求时，日志将显示在此处</Text>
-          </CardContent>
-        </Card>
-      ) : (
-        [...logs].reverse().map(log => (
-          <Card key={log.id} className="bg-slate-800 border-slate-700">
-            <CardContent className="p-3">
-              <View className="flex flex-row items-center gap-2 mb-1">
-                <Text className="block text-xs text-slate-500">{formatTime(log.timestamp)}</Text>
-                <Text className="block text-xs text-slate-600">{log.direction === "inbound" ? "→" : "←"}</Text>
-                <Badge variant={log.statusCode === 200 ? "default" : "destructive"} className={log.statusCode === 200 ? "bg-emerald-500 text-emerald-100" : "bg-red-500 text-red-100"}>
-                  <Text className="text-xs">{log.statusCode}</Text>
-                </Badge>
-                <Text className="block text-xs text-slate-400 flex-1" numberOfLines={1}>{log.endpoint}</Text>
-                <Text className="block text-xs text-slate-500">{log.duration}ms</Text>
+  return (
+    <ScrollView className="flex-1 overflow-y-auto" scrollY>
+      <View className="p-8">
+        {/* 自动刷新控制 */}
+        <View className="flex flex-row items-center justify-end gap-3 mb-4">
+          <View className="flex flex-row items-center gap-2" onClick={() => setAutoRefresh(!autoRefresh)}>
+            <View className={`w-2 h-2 rounded-full ${autoRefresh ? "bg-success" : "bg-on-surface-variant"}`} />
+            <Text className="block text-xs text-on-surface-variant">自动刷新</Text>
+          </View>
+        </View>
+
+        {logs.length === 0 ? (
+          <View className="bg-surface rounded-lg p-12 flex flex-col items-center" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <FileText size={40} color="#D1D5DB" />
+            <Text className="block text-sm text-on-surface-variant mt-4">暂无请求日志</Text>
+            <Text className="block text-xs text-on-surface-variant mt-1">当网关转发请求时，日志将显示在此处</Text>
+          </View>
+        ) : (
+          <View className="bg-surface rounded-lg overflow-hidden" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            {/* Table Header */}
+            <View className="flex flex-row items-center bg-surface-container-low border-b border-outline px-5 py-3">
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider w-16">状态</Text>
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider w-20">时间</Text>
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex-1">CLI 工具</Text>
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider w-24">端点</Text>
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider w-20">供应商</Text>
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider w-28">模型</Text>
+              <Text className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider w-16 text-right">耗时</Text>
+            </View>
+
+            {/* Table Rows */}
+            {[...logs].reverse().map(log => (
+              <View key={log.id} className="flex flex-row items-center px-5 py-3 border-b border-outline-variant">
+                <View className="w-16">
+                  <Badge className={getStatusStyle(log.statusCode)}>
+                    <Text className="text-xs font-medium">{log.statusCode}</Text>
+                  </Badge>
+                </View>
+                <Text className="block text-xs text-on-surface-variant font-mono w-20">{formatTime(log.timestamp)}</Text>
+                <Text className="block text-sm text-on-surface font-medium flex-1">{log.cliTool}</Text>
+                <Text className="block text-xs text-on-surface-variant font-mono w-24" numberOfLines={1}>{log.endpoint}</Text>
+                <Text className="block text-sm text-on-surface w-20">{log.provider}</Text>
+                <Text className="block text-xs text-on-surface-variant w-28" numberOfLines={1}>{log.model}</Text>
+                <Text className="block text-xs text-on-surface-variant w-16 text-right">{log.duration}ms</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  )
+}
+
+// ========== 设置 ==========
+function SettingsView() {
+  const [autoStart, setAutoStart] = useState(true)
+  const [sseEnabled, setSseEnabled] = useState(true)
+  const [logRetention, setLogRetention] = useState("30")
+  const [showProxyKey, setShowProxyKey] = useState(false)
+
+  return (
+    <ScrollView className="flex-1 overflow-y-auto" scrollY>
+      <View className="p-8 max-w-2xl">
+        {/* 网关配置 */}
+        <View className="mb-8">
+          <Text className="block text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">网关配置</Text>
+          <View className="bg-surface rounded-lg divide-y divide-outline-variant" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">监听端口</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">网关服务监听的本地端口</Text>
+              </View>
+              <View className="bg-surface-container rounded-md px-3 py-2 w-24">
+                <Input className="w-full bg-transparent text-sm font-mono text-on-surface text-center" value="3000" disabled />
+              </View>
+            </View>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">代理密钥</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">CLI 工具连接网关时使用的 API Key</Text>
               </View>
               <View className="flex flex-row items-center gap-2">
-                <Badge variant="outline" className="border-slate-600">
-                  <Text className="text-xs text-slate-400">{log.cliTool}</Text>
-                </Badge>
-                <Badge variant="outline" className="border-slate-600">
-                  <Text className="text-xs text-slate-400">{log.provider}</Text>
-                </Badge>
-                <Badge variant="outline" className="border-slate-600">
-                  <Text className="text-xs text-slate-400">{log.model}</Text>
-                </Badge>
+                <View className="bg-surface-container rounded-md px-3 py-2">
+                  <Input className="w-full bg-transparent text-sm font-mono text-on-surface-variant" value={showProxyKey ? "gateway-proxy-key" : "••••••••"} disabled />
+                </View>
+                <View onClick={() => setShowProxyKey(!showProxyKey)} className="p-2 bg-surface-container rounded-md">
+                  {showProxyKey ? <EyeOff size={16} color="#6B7280" /> : <Eye size={16} color="#6B7280" />}
+                </View>
               </View>
-              {log.error && (
-                <Text className="block text-xs text-red-400 mt-1" numberOfLines={2}>{log.error}</Text>
-              )}
-            </CardContent>
-          </Card>
-        ))
-      )}
-    </View>
+            </View>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">自动启动</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">开机时自动启动网关服务</Text>
+              </View>
+              <View onClick={() => setAutoStart(!autoStart)} className={`relative w-10 h-6 rounded-full ${autoStart ? "bg-primary" : "bg-surface-container-high"}`}>
+                <View className={`absolute top-1 w-4 h-4 rounded-full bg-white ${autoStart ? "right-1" : "left-1"}`} style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+              </View>
+            </View>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">SSE 流式传输</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">启用流式事件实时转换</Text>
+              </View>
+              <View onClick={() => setSseEnabled(!sseEnabled)} className={`relative w-10 h-6 rounded-full ${sseEnabled ? "bg-primary" : "bg-surface-container-high"}`}>
+                <View className={`absolute top-1 w-4 h-4 rounded-full bg-white ${sseEnabled ? "right-1" : "left-1"}`} style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* 数据管理 */}
+        <View className="mb-8">
+          <Text className="block text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">数据管理</Text>
+          <View className="bg-surface rounded-lg divide-y divide-outline-variant" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">日志保留天数</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">超过保留天数的请求日志将被自动清除</Text>
+              </View>
+              <View className="bg-surface-container rounded-md px-3 py-2 w-24">
+                <Input className="w-full bg-transparent text-sm font-mono text-on-surface text-center" value={logRetention} onInput={e => setLogRetention(e.detail.value)} />
+              </View>
+            </View>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">导出配置</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">将供应商和路由配置导出为 JSON 文件</Text>
+              </View>
+              <Button variant="outline" className="border-outline-variant text-on-surface" size="sm">
+                <View className="flex flex-row items-center gap-2">
+                  <Download size={14} color="#1A1A2E" />
+                  <Text className="text-xs">导出</Text>
+                </View>
+              </Button>
+            </View>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">导入配置</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">从 JSON 文件导入供应商和路由配置</Text>
+              </View>
+              <Button variant="outline" className="border-outline-variant text-on-surface" size="sm">
+                <View className="flex flex-row items-center gap-2">
+                  <Upload size={14} color="#1A1A2E" />
+                  <Text className="text-xs">导入</Text>
+                </View>
+              </Button>
+            </View>
+            <View className="px-5 py-4 flex flex-row items-center justify-between">
+              <View>
+                <Text className="block text-sm font-medium text-on-surface">清除所有数据</Text>
+                <Text className="block text-xs text-on-surface-variant mt-1">删除所有供应商、路由和日志数据</Text>
+              </View>
+              <Button className="bg-error bg-opacity-10 text-error" size="sm">
+                <Text className="text-xs">清除</Text>
+              </Button>
+            </View>
+          </View>
+        </View>
+
+        {/* 关于 */}
+        <View>
+          <Text className="block text-sm font-semibold text-on-surface-variant uppercase tracking-wider mb-4">关于</Text>
+          <View className="bg-surface rounded-lg px-5 py-4" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+            <View className="flex flex-row items-center gap-3 mb-3">
+              <View className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+                <DoorOpen size={20} color="#FFFFFF" />
+              </View>
+              <View>
+                <Text className="block text-sm font-semibold text-on-surface">AnyDoor</Text>
+                <Text className="block text-xs text-on-surface-variant">v1.0.0</Text>
+              </View>
+            </View>
+            <Text className="block text-xs text-on-surface-variant leading-relaxed">本地 AI 模型网关，让 Codex 和 Claude Code 等编程工具灵活连接 Agnes、DeepSeek 等大模型。支持 OpenAI Responses API 与 Chat Completions 协议自动转换。</Text>
+          </View>
+        </View>
+      </View>
+    </ScrollView>
   )
 }
 
 // ========== 主页面 ==========
 export default function Index() {
-  const [activeTab, setActiveTab] = useState("dashboard")
+  const [activeNav, setActiveNav] = useState("dashboard")
   const [status, setStatus] = useState<GatewayStatus | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
   const [routes, setRoutes] = useState<RouteConfig[]>([])
@@ -767,66 +969,84 @@ export default function Index() {
     refreshAll()
   }, [refreshAll])
 
+  const titles: Record<string, string> = {
+    dashboard: "仪表盘",
+    providers: "供应商",
+    routes: "路由",
+    logs: "请求日志",
+    settings: "设置",
+  }
+
+  const renderContent = () => {
+    switch (activeNav) {
+      case "dashboard":
+        return <DashboardView status={status} providers={providers} routes={routes} />
+      case "providers":
+        return <ProvidersView providers={providers} refresh={() => { fetchProviders(); fetchStatus() }} />
+      case "routes":
+        return <RoutesView routes={routes} providers={providers} refresh={() => { fetchRoutes(); fetchStatus() }} />
+      case "logs":
+        return <LogsView logs={logs} refresh={fetchLogs} />
+      case "settings":
+        return <SettingsView />
+      default:
+        return null
+    }
+  }
+
   return (
-    <View className="min-h-screen bg-slate-900">
-      {/* 头部 */}
-      <View className="bg-slate-800 border-b border-slate-700 px-4 pt-12 pb-3">
-        <View className="flex flex-row items-center gap-2">
-          <Activity size={20} color="#10b981" />
-          <Text className="block text-lg font-bold text-slate-200">AnyDoor</Text>
+    <View className="flex flex-row h-screen bg-background overflow-hidden">
+      {/* Sidebar */}
+      <View className="w-56 bg-sidebar flex flex-col shrink-0">
+        {/* Logo */}
+        <View className="px-5 py-5 flex flex-row items-center gap-3">
+          <View className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+            <DoorOpen size={20} color="#FFFFFF" />
+          </View>
+          <Text className="text-white font-semibold text-base tracking-tight">AnyDoor</Text>
         </View>
-        <Text className="block text-xs text-slate-500 mt-1">本地代理：CLI 工具 → 模型供应商</Text>
+
+        {/* Navigation */}
+        <View className="flex-1 px-3 mt-2">
+          {NAV_ITEMS.map(item => {
+            const isActive = activeNav === item.key
+            return (
+              <View
+                key={item.key}
+                onClick={() => setActiveNav(item.key)}
+                className={`flex flex-row items-center gap-3 px-3 py-3 rounded-lg mb-1 ${isActive ? "bg-sidebar-active" : ""}`}
+              >
+                <item.Icon size={16} color={isActive ? "#FFFFFF" : "#A0A0B8"} />
+                <Text className={`block text-sm ${isActive ? "text-white font-medium" : "text-sidebar-text"}`}>
+                  {item.label}
+                </Text>
+              </View>
+            )
+          })}
+        </View>
+
+        {/* Status indicator */}
+        <View className="px-3 pb-4">
+          <View className="px-3 py-3 rounded-lg bg-sidebar-hover">
+            <View className="flex flex-row items-center gap-2">
+              <View className={`w-2 h-2 rounded-full ${status?.running ? "bg-success" : "bg-error"}`} />
+              <Text className="block text-xs text-sidebar-text">{status?.running ? "网关运行中" : "网关已停止"}</Text>
+            </View>
+          </View>
+        </View>
       </View>
 
-      {/* 标签页 */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-        <View className="px-4 pt-3">
-          <TabsList className="w-full flex flex-row bg-slate-800 rounded-lg p-1">
-            <TabsTrigger value="dashboard" className="flex-1">
-              <View className="flex flex-row items-center gap-1">
-                <Server size={12} color={activeTab === "dashboard" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">仪表盘</Text>
-              </View>
-            </TabsTrigger>
-            <TabsTrigger value="providers" className="flex-1">
-              <View className="flex flex-row items-center gap-1">
-                <Wifi size={12} color={activeTab === "providers" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">供应商</Text>
-              </View>
-            </TabsTrigger>
-            <TabsTrigger value="routes" className="flex-1">
-              <View className="flex flex-row items-center gap-1">
-                <Route size={12} color={activeTab === "routes" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">路由</Text>
-              </View>
-            </TabsTrigger>
-            <TabsTrigger value="logs" className="flex-1">
-              <View className="flex flex-row items-center gap-1">
-                <FileText size={12} color={activeTab === "logs" ? "#e2e8f0" : "#94a3b8"} />
-                <Text className="text-xs">日志</Text>
-              </View>
-            </TabsTrigger>
-          </TabsList>
+      {/* Main content */}
+      <View className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {/* Header */}
+        <View className="px-8 py-5 flex flex-row items-center justify-between border-b border-outline bg-surface">
+          <Text className="block text-xl font-semibold text-on-surface">{titles[activeNav]}</Text>
         </View>
-
-        <ScrollView className="flex-1 px-4 pt-3 pb-8" scrollY>
-          <TabsContent value="dashboard">
-            <DashboardTab status={status} providers={providers} routes={routes} />
-          </TabsContent>
-
-          <TabsContent value="providers">
-            <ProvidersTab providers={providers} refresh={() => { fetchProviders(); fetchStatus() }} />
-          </TabsContent>
-
-          <TabsContent value="routes">
-            <RoutesTab routes={routes} providers={providers} refresh={() => { fetchRoutes(); fetchStatus() }} />
-          </TabsContent>
-
-          <TabsContent value="logs">
-            <LogsTab logs={logs} refresh={fetchLogs} />
-          </TabsContent>
-        </ScrollView>
-      </Tabs>
+        {/* Content */}
+        <View className="flex-1 overflow-hidden">
+          {renderContent()}
+        </View>
+      </View>
     </View>
   )
 }

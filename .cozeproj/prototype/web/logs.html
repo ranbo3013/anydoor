@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnyDoor - 请求日志</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style type="text/tailwindcss">
+@theme {
+  --color-primary: #6C5CE7;
+  --color-primary-hover: #5A4BD1;
+  --color-primary-light: #EDE9FE;
+  --color-on-primary: #FFFFFF;
+  --color-background: #F5F5F7;
+  --color-surface: #FFFFFF;
+  --color-surface-container: #F0F0F3;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-container-low: #F8F8FA;
+  --color-surface-container-high: #E8E8EC;
+  --color-surface-container-highest: #DDDDE2;
+  --color-on-surface: #1A1A2E;
+  --color-on-surface-variant: #6B7280;
+  --color-outline: #E5E7EB;
+  --color-outline-variant: #D1D5DB;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-sidebar: #1A1A2E;
+  --color-sidebar-text: #A0A0B8;
+  --color-sidebar-active: #6C5CE7;
+  --color-sidebar-hover: #2A2A42;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-dialog: 0 20px 60px rgba(0,0,0,0.15);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Noto Sans SC", system-ui, sans-serif;
+}
+</style>
+</head>
+<body class="bg-background font-sans text-on-surface">
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-56 bg-sidebar flex flex-col shrink-0">
+    <div class="px-5 py-5 flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+        <i data-lucide="door-open" class="w-5 h-5 text-on-primary"></i>
+      </div>
+      <span class="text-white font-semibold text-base tracking-tight">AnyDoor</span>
+    </div>
+    <nav class="flex-1 px-3 mt-2 space-y-1">
+      <a href="home.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>仪表盘
+      </a>
+      <a href="providers.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="server" class="w-4 h-4"></i>供应商
+      </a>
+      <a href="routes.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="route" class="w-4 h-4"></i>路由
+      </a>
+      <a href="logs.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-sidebar-active text-white text-sm font-medium">
+        <i data-lucide="file-text" class="w-4 h-4"></i>请求日志
+      </a>
+      <a href="settings.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white text-sm transition-colors">
+        <i data-lucide="settings" class="w-4 h-4"></i>设置
+      </a>
+    </nav>
+    <div class="px-3 pb-4">
+      <div class="px-3 py-2.5 rounded-lg bg-sidebar-hover">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+          <span class="text-sidebar-text text-xs">网关运行中</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0 overflow-y-auto">
+    <header class="px-8 py-5 flex items-center justify-between border-b border-outline">
+      <h1 class="text-xl font-semibold text-on-surface">请求日志</h1>
+      <div class="flex items-center gap-3">
+        <button class="bg-surface-container text-on-surface-variant px-3 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5">
+          <i data-lucide="filter" class="w-3.5 h-3.5"></i>筛选
+        </button>
+        <button class="bg-surface-container text-on-surface-variant px-3 py-1.5 rounded-md text-xs hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5" id="btn-clear-logs">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>清除日志
+        </button>
+      </div>
+    </header>
+
+    <div class="p-8">
+      <!-- Log Table -->
+      <div class="bg-surface rounded-lg shadow-card overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-surface-container-low border-b border-outline">
+              <th class="text-left px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">状态</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">时间</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">CLI 工具</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">端点</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">供应商</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">模型</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-on-surface-variant uppercase tracking-wider">耗时</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-outline-variant/50">
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">200</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:48:36</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Codex</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/responses</td>
+              <td class="px-5 py-3 text-on-surface">Agnes</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">agnes-2.0-flash</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">328ms</td>
+            </tr>
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">200</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:47:58</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Claude Code</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/messages</td>
+              <td class="px-5 py-3 text-on-surface">DeepSeek</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">deepseek-chat</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">512ms</td>
+            </tr>
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-warning/15 text-warning">429</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:45:12</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Codex</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/responses</td>
+              <td class="px-5 py-3 text-on-surface">Agnes</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">agnes-2.0-flash</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">1,204ms</td>
+            </tr>
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-error/15 text-error">500</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:40:03</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Claude Code</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/messages</td>
+              <td class="px-5 py-3 text-on-surface">DeepSeek</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">deepseek-chat</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">超时</td>
+            </tr>
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">200</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:38:21</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Codex</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/responses</td>
+              <td class="px-5 py-3 text-on-surface">Agnes</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">agnes-2.0-flash</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">287ms</td>
+            </tr>
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">200</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:35:44</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Claude Code</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/messages</td>
+              <td class="px-5 py-3 text-on-surface">DeepSeek</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">deepseek-coder</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">445ms</td>
+            </tr>
+            <tr class="hover:bg-surface-container-low transition-colors">
+              <td class="px-5 py-3"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-success/15 text-success">200</span></td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant font-mono">12:32:09</td>
+              <td class="px-5 py-3 text-on-surface font-medium">Codex</td>
+              <td class="px-5 py-3 font-mono text-xs text-on-surface-variant">/responses</td>
+              <td class="px-5 py-3 text-on-surface">Agnes</td>
+              <td class="px-5 py-3 text-xs text-on-surface-variant">agnes-2.0-flash-lite</td>
+              <td class="px-5 py-3 text-right text-xs text-on-surface-variant">198ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="flex items-center justify-between mt-4">
+        <span class="text-xs text-on-surface-variant">共 1,284 条记录</span>
+        <div class="flex items-center gap-2">
+          <button class="bg-surface text-on-surface-variant px-3 py-1.5 rounded-md text-xs border border-outline-variant hover:bg-surface-container transition-colors">上一页</button>
+          <button class="bg-primary text-on-primary px-3 py-1.5 rounded-md text-xs font-medium">1</button>
+          <button class="bg-surface text-on-surface-variant px-3 py-1.5 rounded-md text-xs border border-outline-variant hover:bg-surface-container transition-colors">2</button>
+          <button class="bg-surface text-on-surface-variant px-3 py-1.5 rounded-md text-xs border border-outline-variant hover:bg-surface-container transition-colors">3</button>
+          <button class="bg-surface text-on-surface-variant px-3 py-1.5 rounded-md text-xs border border-outline-variant hover:bg-surface-container transition-colors">下一页</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+$(function(){ lucide.createIcons(); });
+</script>
+</body>
+</html>
