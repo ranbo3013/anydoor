@@ -969,6 +969,24 @@ export default function Index() {
     refreshAll()
   }, [refreshAll])
 
+  // Force Taro H5 containers to full desktop width/height
+  useEffect(() => {
+    const forceDesktopLayout = () => {
+      const selectors = ['#app', '.taro-tabbar__container', '.taro-tabbar__panel', '.taro_page', '[data-page]']
+      selectors.forEach(sel => {
+        document.querySelectorAll(sel).forEach((el: Element) => {
+          const htmlEl = el as HTMLElement
+          htmlEl.style.width = '100%'
+          htmlEl.style.maxWidth = 'none'
+          htmlEl.style.height = '100%'
+        })
+      })
+    }
+    forceDesktopLayout()
+    const timer = setInterval(forceDesktopLayout, 500)
+    return () => clearInterval(timer)
+  }, [])
+
   const titles: Record<string, string> = {
     dashboard: "仪表盘",
     providers: "供应商",
@@ -995,11 +1013,11 @@ export default function Index() {
   }
 
   return (
-    <View className="flex flex-row h-screen bg-background overflow-hidden">
+    <View style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100vh', backgroundColor: 'var(--background)', overflow: 'hidden' }}>
       {/* Sidebar */}
-      <View className="w-60 bg-sidebar flex flex-col shrink-0" style={{ minWidth: '240px' }}>
+      <View style={{ width: '240px', minWidth: '240px', flexShrink: 0, backgroundColor: 'var(--sidebar)', display: 'flex', flexDirection: 'column' }}>
         {/* Logo */}
-        <View className="px-5 py-5 flex flex-row items-center gap-3">
+        <View style={{ padding: '20px', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
           <View className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
             <DoorOpen size={20} color="#FFFFFF" />
           </View>
@@ -1007,14 +1025,14 @@ export default function Index() {
         </View>
 
         {/* Navigation */}
-        <View className="flex-1 px-3 mt-2">
+        <View style={{ flex: 1, padding: '0 12px', marginTop: '8px' }}>
           {NAV_ITEMS.map(item => {
             const isActive = activeNav === item.key
             return (
               <View
                 key={item.key}
                 onClick={() => setActiveNav(item.key)}
-                className={`flex flex-row items-center gap-3 px-3 py-3 rounded-lg mb-1 ${isActive ? "bg-sidebar-active" : ""}`}
+                style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '8px', marginBottom: '4px', backgroundColor: isActive ? 'var(--sidebar-active)' : 'transparent' }}
               >
                 <item.Icon size={16} color={isActive ? "#FFFFFF" : "#A0A0B8"} />
                 <Text className={`block text-sm ${isActive ? "text-white font-medium" : "text-sidebar-text"}`}>
@@ -1026,9 +1044,9 @@ export default function Index() {
         </View>
 
         {/* Status indicator */}
-        <View className="px-3 pb-4">
-          <View className="px-3 py-3 rounded-lg bg-sidebar-hover">
-            <View className="flex flex-row items-center gap-2">
+        <View style={{ padding: '0 12px 16px' }}>
+          <View style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'var(--sidebar-hover)' }}>
+            <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
               <View className={`w-2 h-2 rounded-full ${status?.running ? "bg-success" : "bg-error"}`} />
               <Text className="block text-xs text-sidebar-text">{status?.running ? "网关运行中" : "网关已停止"}</Text>
             </View>
@@ -1037,13 +1055,13 @@ export default function Index() {
       </View>
 
       {/* Main content */}
-      <View className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <View style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header */}
-        <View className="px-8 py-5 flex flex-row items-center justify-between border-b border-outline bg-surface">
+        <View style={{ padding: '20px 32px', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--surface)' }}>
           <Text className="block text-xl font-semibold text-on-surface">{titles[activeNav]}</Text>
         </View>
         {/* Content */}
-        <View className="flex-1 overflow-hidden">
+        <View style={{ flex: 1, overflow: 'hidden' }}>
           {renderContent()}
         </View>
       </View>

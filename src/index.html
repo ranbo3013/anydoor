@@ -12,13 +12,53 @@
   <title>AnyDoor</title>
   <script><%= htmlWebpackPlugin.options.script %></script>
   <script>
-    // Reset Taro's mobile font-size scaling for desktop app
-    // Taro sets rem base to 40*min(w,h)/750 (clamped 20-40px),
-    // which breaks Tailwind rem units on desktop. Reset to standard 16px.
-    document.documentElement.style.fontSize = '16px';
-    window.addEventListener('resize', function() {
-      document.documentElement.style.fontSize = '16px';
-    });
+    // Force desktop-standard rem base for AnyDoor desktop app
+    // Taro H5 injects a script that sets fontSize = 40*min(w,h)/750 (clamped 20-40px)
+    // which makes Tailwind rem units render at 2.5x on desktop.
+    // We use MutationObserver to continuously override this back to 16px.
+    (function() {
+      var html = document.documentElement;
+      var TARGET = '16px';
+      
+      // 1. Intercept addEventListener so Taro's resize handler also gets overridden
+      var _origAdd = window.addEventListener;
+      window.addEventListener = function(type, fn, opts) {
+        if (type === 'resize') {
+          var wrapped = function(e) { fn(e); html.style.fontSize = TARGET; };
+          return _origAdd.call(window, type, wrapped, opts);
+        }
+        return _origAdd.apply(window, arguments);
+      };
+      
+      // 2. MutationObserver: any time Taro changes fontSize, force it back
+      var observer = new MutationObserver(function() {
+        if (html.style.fontSize !== TARGET) {
+          html.style.fontSize = TARGET;
+        }
+      });
+      observer.observe(html, { attributes: true, attributeFilter: ['style'] });
+      
+      // 3. Set immediately + after next tick
+      html.style.fontSize = TARGET;
+      setTimeout(function() { html.style.fontSize = TARGET; }, 0);
+      setTimeout(function() { html.style.fontSize = TARGET; }, 100);
+      setTimeout(function() { html.style.fontSize = TARGET; }, 500);
+      
+      // 4. Also force full width on all Taro containers
+      function forceFullWidth() {
+        var selectors = ['#app', '.taro-tabbar__container', '.taro-tabbar__panel', '.taro_page', '[data-page]'];
+        selectors.forEach(function(sel) {
+          var els = document.querySelectorAll(sel);
+          els.forEach(function(el) {
+            el.style.width = '100%';
+            el.style.maxWidth = 'none';
+          });
+        });
+      }
+      setTimeout(forceFullWidth, 100);
+      setTimeout(forceFullWidth, 500);
+      setTimeout(forceFullWidth, 1000);
+    })();
   </script>
 </head>
 

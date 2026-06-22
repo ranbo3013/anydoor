@@ -8,6 +8,45 @@ page {
   height: 100%;
 }
 
+/* ====== Desktop App Full-Width Overrides ====== */
+/* Force all Taro H5 containers to full width for desktop app */
+html, body, #app,
+.taro-tabbar__container,
+.taro-tabbar__panel,
+.taro-page,
+.taro-router,
+div[data-page],
+.taro_page {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+html, body, #app {
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  font-size: 16px !important;
+}
+
+/* ====== Fix Taro H5 Flex Layout ====== */
+/* Taro H5 sometimes doesn't apply Tailwind flex correctly.
+   These rules ensure flex containers work on desktop. */
+.flex { display: flex !important; }
+.flex-row { flex-direction: row !important; }
+.flex-col { flex-direction: column !important; }
+.flex-1 { flex: 1 1 0% !important; }
+.flex-shrink-0 { flex-shrink: 0 !important; }
+.items-center { align-items: center !important; }
+.justify-center { justify-content: center !important; }
+.justify-between { justify-content: space-between !important; }
+.gap-2 { gap: 8px !important; }
+.gap-3 { gap: 12px !important; }
+.gap-5 { gap: 20px !important; }
+.overflow-hidden { overflow: hidden !important; }
+.overflow-y-auto { overflow-y: auto !important; }
+
 :root,
 page,
 root-portal {
