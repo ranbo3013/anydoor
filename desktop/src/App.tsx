@@ -317,14 +317,16 @@ function Providers({ providers, setProviders }: {
     }
     setTesting(true)
     try {
-      const res: any = await API.post('/api/gateway/providers/test', { baseUrl: form.baseUrl, apiKey: form.apiKey })
-      if (res?.data?.success) {
+      const res: any = await API.post('/api/gateway/providers/test', { baseUrl: form.baseUrl, apiKey: form.apiKey, type: form.type })
+      console.log('Test result:', res)
+      if (res?.success) {
         alert('连接成功！')
       } else {
-        alert(`连接失败：${res?.data?.message || '请检查 Base URL 和 API Key'}`)
+        alert(`连接失败：${res?.message || '请检查 Base URL 和 API Key'}`)
       }
-    } catch {
-      alert('连接失败，请检查 Base URL 和 API Key')
+    } catch (e: any) {
+      console.error('Test error:', e)
+      alert(`连接失败：${e?.message || '请检查 Base URL 和 API Key'}`)
     } finally {
       setTesting(false)
     }

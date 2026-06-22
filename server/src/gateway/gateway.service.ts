@@ -114,51 +114,108 @@ export class GatewayService {
     if (!provider) {
       return { success: false, message: 'Provider not found' };
     }
-    return this.testProviderConnection(provider.baseUrl, provider.apiKey);
+    return this.testProviderConnection(provider.baseUrl, provider.apiKey, provider.type);
   }
 
   /**
    * Test connectivity to a provider by URL and API key
    */
-  async testProviderConnection(baseUrl: string, apiKey: string): Promise<{ success: boolean; message: string; latency?: number }> {
+  async testProviderConnection(baseUrl: string, apiKey: string, type?: string): Promise<{ success: boolean; message: string; latency?: number; detail?: string; modelCount?: number }> {
     const startTime = Date.now();
     try {
       const https = require('https');
       const http = require('http');
-      const client = baseUrl.startsWith('https') ? https : http;
 
-      const url = new URL(`${baseUrl.replace(/\/+$/, '')}/models`);
+      // Normalize URL and determine test endpoint based on provider type
+      let normalizedUrl = baseUrl.replace(/\/+$/, '');
+      
+      // For OpenAI-compatible APIs, ensure URL ends with /v1
+      if (type !== 'anthropic' && !normalizedUrl.endsWith('/v1')) {
+        normalizedUrl += '/v1';
+      }
+
+      const client = normalizedUrl.startsWith('https') ? https : http;
+      
+      // Anthropic uses different auth header and endpoint
+      let testPath: string;
+      let headers: Record<string, string>;
+      
+      if (type === 'anthropic') {
+        // Anthropic: test with /v1/messages (just check if the endpoint responds)
+        testPath = '/v1/messages';
+        headers = {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        };
+      } else {
+        // OpenAI-compatible: test with /v1/models
+        testPath = `${normalizedUrl.endsWith('/v1') ? '' : '/v1'}/models`;
+        headers = {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        };
+      }
+      
+      const baseUrlForPath = type === 'anthropic' ? normalizedUrl : normalizedUrl;
+      const url = new URL(testPath, baseUrlForPath.startsWith('http') ? baseUrlForPath : `https://${baseUrlForPath}`);
+      console.log(`[TestConnection] Testing: ${url.toString()} (type: ${type || 'openai_chat'})`);
       
       return new Promise((resolve) => {
         const req = client.request(
           {
             hostname: url.hostname,
             port: url.port,
-            path: url.pathname,
+            path: url.pathname + url.search,
             method: 'GET',
-            headers: {
+            headers: type === 'anthropic' ? headers : {
               'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json',
             },
-            timeout: 10000,
+            timeout: 15000,
           },
           (res: any) => {
             const latency = Date.now() - startTime;
             let body = '';
             res.on('data', (chunk: any) => { body += chunk; });
             res.on('end', () => {
-              if (res.statusCode === 200 || res.statusCode === 401) {
-                // 401 means the API key is wrong but the server is reachable
+              console.log(`[TestConnection] Response: ${res.statusCode}, Body: ${body.substring(0, 200)}`);
+              if (res.statusCode === 200) {
+                try {
+                  const data = JSON.parse(body);
+                  const modelCount = Array.isArray(data?.data) ? data.data.length : 0;
+                  resolve({
+                    success: true,
+                    message: `连接成功 (${latency}ms)，可用模型: ${modelCount} 个`,
+                    latency,
+                  });
+                } catch {
+                  resolve({
+                    success: true,
+                    message: `连接成功 (${latency}ms)`,
+                    latency,
+                  });
+                }
+              } else if (res.statusCode === 401 || res.statusCode === 403) {
                 resolve({
-                  success: res.statusCode === 200,
-                  message: res.statusCode === 200 ? `Connected (${latency}ms)` : 'API key is invalid',
+                  success: false,
+                  message: 'API Key 无效或无权限',
                   latency,
+                  detail: body.substring(0, 200),
+                });
+              } else if (res.statusCode === 404) {
+                resolve({
+                  success: false,
+                  message: 'API 端点不存在，请检查 Base URL 格式',
+                  latency,
+                  detail: `请求地址: ${url.toString()}`,
                 });
               } else {
                 resolve({
                   success: false,
                   message: `HTTP ${res.statusCode}`,
                   latency,
+                  detail: body.substring(0, 200),
                 });
               }
             });
@@ -166,16 +223,34 @@ export class GatewayService {
         );
 
         req.on('error', (err: any) => {
+          console.log(`[TestConnection] Error: ${err.message}`);
           resolve({
             success: false,
-            message: `Connection failed: ${err.message}`,
+            message: `连接失败: ${err.message}`,
             latency: Date.now() - startTime,
+            detail: `请检查 Base URL 是否正确，确保可以访问。常见问题：URL 格式错误、网络代理、防火墙拦截`,
           });
         });
 
         req.on('timeout', () => {
           req.destroy();
           resolve({
+            success: false,
+            message: '连接超时 (15秒)',
+            latency: Date.now() - startTime,
+            detail: '请检查网络连接，确保可以访问该 API 地址',
+          });
+        });
+
+        req.end();
+      });
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `请求构建失败: ${err.message}`,
+      };
+    }
+  }
             success: false,
             message: 'Connection timed out',
             latency: Date.now() - startTime,

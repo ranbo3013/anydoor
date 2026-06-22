@@ -92,12 +92,12 @@ export class GatewayController {
   }
 
   @Post('providers/test')
-  async testProviderDirect(@Body() body: { baseUrl: string; apiKey: string }) {
-    console.log(`[Gateway] POST /api/gateway/providers/test - ${body.baseUrl}`);
+  async testProviderDirect(@Body() body: { baseUrl: string; apiKey: string; type?: string }) {
+    console.log(`[Gateway] POST /api/gateway/providers/test - ${body.baseUrl} type=${body.type}`);
     if (!body.baseUrl) {
       return { code: 400, msg: 'Base URL is required', data: { success: false, message: 'Base URL 不能为空' } };
     }
-    const result = await this.gatewayService.testProviderConnection(body.baseUrl, body.apiKey || '');
+    const result = await this.gatewayService.testProviderConnection(body.baseUrl, body.apiKey || '', body.type);
     return { code: 200, msg: 'success', data: result };
   }
 
