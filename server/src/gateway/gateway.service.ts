@@ -120,7 +120,7 @@ export class GatewayService {
   /**
    * Test connectivity to a provider by URL and API key
    */
-  async testProviderConnection(baseUrl: string, apiKey: string, type?: string): Promise<{ success: boolean; message: string; latency?: number; detail?: string; modelCount?: number }> {
+  async testProviderConnection(baseUrl: string, apiKey: string, type?: string): Promise<{ success: boolean; message: string; latency?: number; detail?: string; modelCount?: number; models?: string[] }> {
     const startTime = Date.now();
     try {
       const https = require('https');
@@ -183,11 +183,14 @@ export class GatewayService {
               if (res.statusCode === 200) {
                 try {
                   const data = JSON.parse(body);
-                  const modelCount = Array.isArray(data?.data) ? data.data.length : 0;
+                  const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id || m.name || m.model).filter(Boolean) : [];
+                  const modelCount = models.length;
                   resolve({
                     success: true,
                     message: `连接成功 (${latency}ms)，可用模型: ${modelCount} 个`,
                     latency,
+                    modelCount,
+                    models,
                   });
                 } catch {
                   resolve({
