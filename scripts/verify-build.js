@@ -43,7 +43,7 @@ try {
 
 // 检查关键文件（esbuild bundle 方式）
 const checks = [
-  { name: 'Frontend', path: path.join(appDir, 'dist-web', 'index.html') },
+  { name: 'Frontend', path: path.join(appDir, 'dist-desktop', 'index.html') },
   { name: 'Server bundle (server.js)', path: path.join(appDir, 'server-bundle', 'server.js') },
   { name: 'Electron main', path: path.join(appDir, 'electron', 'dist', 'main.js') },
 ];

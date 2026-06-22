@@ -62,11 +62,11 @@ function getServerDir(): string {
 
 function getFrontendDir(): string {
   if (isDev) {
-    return path.join(__dirname, '..', 'dist');
+    return path.join(__dirname, '..', 'dist-desktop');
   }
-  // 生产模式：从 app 目录内的 dist-web 读取
+  // 生产模式：从 app 目录内的 dist-desktop 读取
   const appPath = app.getAppPath();
-  const frontendDir = path.join(appPath, 'dist-web');
+  const frontendDir = path.join(appPath, 'dist-desktop');
   log(`Frontend dir: ${frontendDir}`);
   return frontendDir;
 }
@@ -316,7 +316,7 @@ function createMainWindow() {
 
   // 加载前端页面
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5000');
+    mainWindow.loadURL('http://localhost:5002');
   } else {
     const frontendDir = getFrontendDir();
     const indexPath = path.join(frontendDir, 'index.html');
