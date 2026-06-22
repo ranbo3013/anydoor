@@ -447,13 +447,24 @@ export function getTargetFormat(providerType: ApiFormat, originalEndpoint: strin
  */
 export function buildUpstreamUrl(baseUrl: string, format: ApiFormat, originalEndpoint: string): string {
   const base = baseUrl.replace(/\/+$/, '');
+
   if (format === 'anthropic') {
-    return `${base}/messages`;
+    // Anthropic: /v1/messages
+    if (base.endsWith('/v1') || base.includes('/v1/')) {
+      return `${base}/messages`;
+    }
+    return `${base}/v1/messages`;
   }
-  // Always use chat completions endpoint for openai_chat format
+
+  // OpenAI Chat Completions format
   if (originalEndpoint.includes('/responses') || originalEndpoint.includes('/chat/completions')) {
-    return `${base}/chat/completions`;
+    // Ensure /v1 is in the path
+    if (base.endsWith('/v1') || base.includes('/v1/')) {
+      return `${base}/chat/completions`;
+    }
+    return `${base}/v1/chat/completions`;
   }
+
   // For other endpoints (like /models), pass through
   return `${base}${originalEndpoint}`;
 }
