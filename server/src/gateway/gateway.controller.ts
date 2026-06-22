@@ -518,6 +518,36 @@ wire_api = "responses"`,
     };
   }
 
+  // ========== Export / Import Config ==========
+
+  @Get('config')
+  async exportConfig() {
+    console.log('[Gateway] GET /api/gateway/config (export)');
+    const providers = await this.gatewayService.getAllProviders();
+    const routes = await this.gatewayService.getAllRoutes();
+    return {
+      code: 200,
+      msg: 'success',
+      data: { providers, routes, version: '1.0.0' },
+    };
+  }
+
+  @Post('config')
+  async importConfig(@Body() body: { providers?: any[]; routes?: any[] }) {
+    console.log('[Gateway] POST /api/gateway/config (import)', JSON.stringify(body).slice(0, 200));
+    try {
+      if (body.providers) {
+        await this.gatewayService.replaceAllProviders(body.providers);
+      }
+      if (body.routes) {
+        await this.gatewayService.replaceAllRoutes(body.routes);
+      }
+      return { code: 200, msg: 'success', data: null };
+    } catch (error) {
+      return { code: 500, msg: error.message, data: null };
+    }
+  }
+
   // ========== Helper ==========
 
   private detectCliTool(endpoint: string, body: any): string {

@@ -31,6 +31,15 @@ export class GatewayService {
     return store.deleteProvider(id);
   }
 
+  getAllProviders(): Provider[] {
+    return store.getProviders();
+  }
+
+  replaceAllProviders(providers: Provider[]): void {
+    this.logger.log(`Replacing all providers with ${providers.length} items`);
+    store.replaceAllProviders(providers);
+  }
+
   // ========== Route ==========
 
   getRoutes(): RouteConfig[] {
@@ -54,6 +63,15 @@ export class GatewayService {
   deleteRoute(id: string): boolean {
     this.logger.log(`Deleting route: ${id}`);
     return store.deleteRoute(id);
+  }
+
+  getAllRoutes(): RouteConfig[] {
+    return store.getRoutes();
+  }
+
+  replaceAllRoutes(routes: RouteConfig[]): void {
+    this.logger.log(`Replacing all routes with ${routes.length} items`);
+    store.replaceAllRoutes(routes);
   }
 
   // ========== Logs ==========

@@ -4,7 +4,7 @@ import {
   Activity, Zap, ChevronRight, Plus, Trash2, Edit3,
   Power, PowerOff, RefreshCw, Download, Database,
   Terminal, Copy, CheckCircle2, XCircle, Clock,
-  AlertTriangle, Info, ArrowRightLeft, Shield,
+  AlertTriangle, Info, ArrowRightLeft, Shield, Upload, RotateCcw,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -231,8 +231,9 @@ function Dashboard({ providers, routes, logs }: {
         </div>
         <div className="p-6 space-y-4">
           {[
-            { tool: 'Codex', cmd: 'export OPENAI_API_KEY=your-key && export OPENAI_BASE_URL=http://localhost:3000/api/v1' },
-            { tool: 'Claude Code', cmd: 'export ANTHROPIC_API_KEY=your-key && export ANTHROPIC_BASE_URL=http://localhost:3000/api/v1' },
+            { tool: 'Codex', cmd: 'export OPENAI_BASE_URL=http://localhost:3000/api/gateway/proxy\nexport OPENAI_API_KEY=anydoor' },
+            { tool: 'Claude Code', cmd: 'export ANTHROPIC_BASE_URL=http://localhost:3000/api/gateway/proxy\nexport ANTHROPIC_API_KEY=anydoor' },
+            { tool: 'Cursor', cmd: 'OPENAI BASE URL: http://localhost:3000/api/gateway/proxy\nAPI Key: anydoor' },
           ].map(({ tool, cmd }) => (
             <div key={tool} className="bg-gray-900 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
@@ -724,6 +725,38 @@ function SettingsPage() {
     } catch { alert('导出失败') }
   }
 
+  const handleImportConfig = async () => {
+    const input = document.createElement('input')
+    input.type = 'file'; input.accept = '.json'
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const config = JSON.parse(text)
+        if (!confirm('导入将覆盖当前所有供应商和路由配置，确定继续？')) return
+        await API.post('/api/gateway/config', config)
+        alert('配置导入成功，请刷新页面查看')
+        window.location.reload()
+      } catch (err: any) {
+        alert('导入失败: ' + (err.message || '配置文件格式错误'))
+      }
+    }
+    input.click()
+  }
+
+  const handleResetConfig = async () => {
+    if (!confirm('确定重置所有配置？此操作不可恢复！')) return
+    if (!confirm('再次确认：将删除所有供应商、路由和日志数据！')) return
+    try {
+      await API.del('/api/gateway/providers')
+      await API.del('/api/gateway/routes')
+      await API.del('/api/gateway/logs')
+      alert('配置已重置，请刷新页面')
+      window.location.reload()
+    } catch { alert('重置失败') }
+  }
+
   const handleClearLogs = async () => {
     if (confirm('确定清空所有请求日志？')) {
       await API.del('/api/gateway/logs')
@@ -767,9 +800,17 @@ function SettingsPage() {
             className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-gray-700 hover:bg-gray-50 border border-gray-200 transition-colors">
             <Download size={16} className="text-gray-400" /> 导出配置文件
           </button>
+          <button onClick={handleImportConfig}
+            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-gray-700 hover:bg-gray-50 border border-gray-200 transition-colors">
+            <Upload size={16} className="text-gray-400" /> 导入配置文件
+          </button>
           <button onClick={handleClearLogs}
             className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-red-600 hover:bg-red-50 border border-red-200 transition-colors">
             <Trash2 size={16} /> 清空请求日志
+          </button>
+          <button onClick={handleResetConfig}
+            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-red-600 hover:bg-red-50 border border-red-200 transition-colors">
+            <RotateCcw size={16} /> 重置所有配置
           </button>
         </div>
       </div>

@@ -113,6 +113,14 @@ export function deleteRoute(id: string): boolean {
   return true;
 }
 
+export function replaceAllProviders(providers: Provider[]): void {
+  writeJsonFile(PROVIDERS_FILE, providers);
+}
+
+export function replaceAllRoutes(routes: RouteConfig[]): void {
+  writeJsonFile(ROUTES_FILE, routes);
+}
+
 // ========== Proxy Logs ==========
 
 const MAX_LOGS = 500;
