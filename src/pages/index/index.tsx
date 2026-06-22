@@ -997,7 +997,7 @@ export default function Index() {
   return (
     <View className="flex flex-row h-screen bg-background overflow-hidden">
       {/* Sidebar */}
-      <View className="w-56 bg-sidebar flex flex-col shrink-0">
+      <View className="w-60 bg-sidebar flex flex-col shrink-0" style={{ minWidth: '240px' }}>
         {/* Logo */}
         <View className="px-5 py-5 flex flex-row items-center gap-3">
           <View className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">

@@ -203,10 +203,7 @@ export default defineConfig<'vite'>(async (merge, _env) => {
           config: {},
         },
         pxtransform: {
-          enable: true,
-          config: {
-            platform: 'h5',
-          },
+          enable: false,
         },
         cssModules: {
           enable: false, // 默认为 false，如需使用 css modules 功能，则设为 true

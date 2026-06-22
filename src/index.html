@@ -9,8 +9,17 @@
   <meta name="format-detection" content="telephone=no,address=no">
   <meta name="apple-mobile-web-app-status-bar-style" content="white">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-  <title>coze-mini-program</title>
+  <title>AnyDoor</title>
   <script><%= htmlWebpackPlugin.options.script %></script>
+  <script>
+    // Reset Taro's mobile font-size scaling for desktop app
+    // Taro sets rem base to 40*min(w,h)/750 (clamped 20-40px),
+    // which breaks Tailwind rem units on desktop. Reset to standard 16px.
+    document.documentElement.style.fontSize = '16px';
+    window.addEventListener('resize', function() {
+      document.documentElement.style.fontSize = '16px';
+    });
+  </script>
 </head>
 
 <body>
