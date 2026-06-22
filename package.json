@@ -153,12 +153,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
-        },
-        {
-          "target": "zip",
-          "arch": ["universal"]
+          "arch": ["arm64"]
         }
+      ]
       ],
       "icon": "electron/assets/icon.icns",
       "hardenedRuntime": true,
