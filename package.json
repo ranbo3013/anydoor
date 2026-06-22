@@ -16,7 +16,7 @@
     "build:desktop:intel": "cd desktop && pnpm build && cd .. && pnpm build:server && node scripts/bundle-server.js && pnpm build:electron && npx electron-builder --mac --x64 && node scripts/verify-build.js",
     "build:desktop:all": "cd desktop && pnpm build && cd .. && pnpm build:server && node scripts/bundle-server.js && pnpm build:electron && npx electron-builder --mac --arm64 --x64 && node scripts/verify-build.js",
     "dev": "pnpm exec concurrently --kill-others --kill-signal SIGKILL -n web,server -c blue,green \"pnpm dev:web\" \"pnpm dev:server\"",
-    "dev:desktop": "cd desktop && pnpm install && pnpm dev & cd .. && pnpm dev:server & sleep 2 && pnpm build:electron && npx electron .",
+    "dev:desktop": "cd desktop && pnpm install && pnpm dev & cd .. && pnpm dev:server & sleep 5 && pnpm build:electron && npx electron .",
     "dev:server": "cd server && pnpm dev",
     "dev:tt": "taro build --type tt --watch",
     "dev:weapp": "taro build --type weapp --watch",

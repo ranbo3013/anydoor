@@ -120,13 +120,12 @@ function waitUntilServerReady(
 
 // ─── 启动后端服务 ───────────────────────────────────
 function startServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (isDev) {
-      log('Dev mode: assuming server is already running');
-      resolve();
-      return;
-    }
+  if (isDev) {
+    log('Dev mode: waiting for external server on port ' + SERVER_PORT);
+    return waitUntilServerReady(SERVER_PORT, 60);
+  }
 
+  return new Promise((resolve, reject) => {
     // 生产模式：用 fork + ELECTRON_RUN_AS_NODE 启动 NestJS 服务
     // 关键：打包后的 App 里没有 node 命令，必须用 Electron 自带的 Node.js 运行时
     const { fork } = require('child_process') as typeof import('child_process');
