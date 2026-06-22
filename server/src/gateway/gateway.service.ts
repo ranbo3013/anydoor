@@ -254,20 +254,4 @@ export class GatewayService {
       };
     }
   }
-            success: false,
-            message: 'Connection timed out',
-            latency: Date.now() - startTime,
-          });
-        });
-
-        req.end();
-      });
-    } catch (err: any) {
-      return {
-        success: false,
-        message: `Error: ${err.message}`,
-        latency: Date.now() - startTime,
-      };
-    }
-  }
 }
