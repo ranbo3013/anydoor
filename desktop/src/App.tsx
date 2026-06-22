@@ -782,7 +782,7 @@ function SettingsPage() {
   const [gatewayInfo, setGatewayInfo] = useState<{ port: number; host: string; uptime: number } | null>(null)
 
   useEffect(() => {
-    API.get('/api/gateway/config/_info').then((data: unknown) => setGatewayInfo(data as { port: number; host: string; uptime: number })).catch(() => {})
+    API.get('/api/gateway/_info').then((data: unknown) => setGatewayInfo(data as { port: number; host: string; uptime: number; providerCount: number; routeCount: number })).catch(() => {})
   }, [])
 
   const handleExportConfig = async () => {
