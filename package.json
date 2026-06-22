@@ -132,7 +132,9 @@
       "!dist",
       "!dist-web",
       "!src",
-      "!release"
+      "!release",
+      "!node_modules/@esbuild",
+      "!node_modules/esbuild"
     ],
     "extraResources": [
       {
@@ -153,15 +155,18 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": ["universal"]
         }
-      ]
       ],
       "icon": "electron/assets/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "electron/entitlements.mac.plist",
-      "entitlementsInherit": "electron/entitlements.mac.plist"
+      "entitlementsInherit": "electron/entitlements.mac.plist",
+      "x64ArchFiles": [
+        "node_modules/@esbuild/darwin-x64/**/*",
+        "node_modules/@esbuild/linux-x64/**/*"
+      ]
     },
     "dmg": {
       "title": "${productName} ${version}",
