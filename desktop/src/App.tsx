@@ -12,11 +12,13 @@ import {
 interface Provider {
   id: string
   name: string
+  type: 'openai_chat' | 'openai_responses' | 'anthropic'
   baseUrl: string
   apiKey: string
   models: string[]
-  status: 'active' | 'inactive'
-  protocol: 'openai' | 'anthropic' | 'custom'
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 interface Route {
@@ -25,8 +27,8 @@ interface Route {
   cliTool: 'codex' | 'claude-code' | 'cursor' | 'custom'
   model: string
   providerId: string
-  protocolConversion: 'responses-to-chat' | 'chat-to-responses' | 'none'
   enabled: boolean
+  createdAt?: string
 }
 
 interface ProxyLog {
@@ -159,7 +161,7 @@ function StatCard({ icon: Icon, label, value, color, sub }: {
 function Dashboard({ providers, routes, logs }: {
   providers: Provider[]; routes: Route[]; logs: ProxyLog[]
 }) {
-  const activeProviders = providers.filter(p => p.status === 'active').length
+  const activeProviders = providers.filter(p => p.enabled).length
   const activeRoutes = routes.filter(r => r.enabled).length
   const totalRequests = logs.length
 
@@ -206,7 +208,7 @@ function Dashboard({ providers, routes, logs }: {
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="text-sm text-gray-600 truncate">{route.model}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 shrink-0">
-                      {route.protocolConversion === 'none' ? '直通' : '协议转换'}
+                      {(route.cliTool === 'codex' && providers.find(pp => pp.id === route.providerId)?.type === 'openai_chat') ? '协议转换' : '直通'}
                     </span>
                   </div>
                   <ChevronRight size={16} className="text-gray-300 shrink-0" />
@@ -252,7 +254,7 @@ function Providers({ providers, setProviders }: {
 }) {
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', baseUrl: '', apiKey: '', models: '', protocol: 'openai' as Provider['protocol'] })
+  const [form, setForm] = useState({ name: '', type: 'openai_chat' as Provider['type'], baseUrl: '', apiKey: '', models: '', enabled: true })
 
   const loadProviders = useCallback(async () => {
     try {
@@ -275,13 +277,13 @@ function Providers({ providers, setProviders }: {
     }
     setShowForm(false)
     setEditId(null)
-    setForm({ name: '', baseUrl: '', apiKey: '', models: '', protocol: 'openai' })
+    setForm({ name: '', type: 'openai_chat', baseUrl: '', apiKey: '', models: '', enabled: true })
     loadProviders()
   }
 
   const handleEdit = (p: Provider) => {
     setEditId(p.id)
-    setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, models: p.models.join(', '), protocol: p.protocol })
+    setForm({ name: p.name, type: p.type, baseUrl: p.baseUrl, apiKey: p.apiKey, models: p.models.join(', '), enabled: p.enabled })
     setShowForm(true)
   }
 
@@ -315,7 +317,7 @@ function Providers({ providers, setProviders }: {
           <p className="text-sm text-gray-500 mt-1">配置 AI 模型供应商连接</p>
         </div>
         <button
-          onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', baseUrl: '', apiKey: '', models: '', protocol: 'openai' }) }}
+          onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', type: 'openai_chat', baseUrl: '', apiKey: '', models: '', enabled: true }) }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
           style={{ background: 'var(--primary)' }}
         >
@@ -354,13 +356,18 @@ function Providers({ providers, setProviders }: {
                   placeholder="deepseek-chat, deepseek-reasoner" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">协议类型</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">API 格式</label>
                 <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  value={form.protocol} onChange={e => setForm(f => ({ ...f, protocol: e.target.value as Provider['protocol'] }))}>
-                  <option value="openai">OpenAI 兼容</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="custom">自定义</option>
+                  value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as Provider['type'] }))}>
+                  <option value="openai_chat">OpenAI Chat Completions（/v1/chat/completions）</option>
+                  <option value="openai_responses">OpenAI Responses（/v1/responses）</option>
+                  <option value="anthropic">Anthropic（/v1/messages）</option>
                 </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {form.type === 'openai_chat' && '支持 DeepSeek、Agnes、通义千问等兼容 OpenAI 的供应商'}
+                  {form.type === 'openai_responses' && '支持 OpenAI 官方 Responses API'}
+                  {form.type === 'anthropic' && '支持 Claude 官方 API'}
+                </p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
@@ -390,13 +397,13 @@ function Providers({ providers, setProviders }: {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{p.name}</h3>
-                      <p className="text-xs text-gray-400">{p.protocol}</p>
+                      <p className="text-xs text-gray-400">{p.type === 'openai_chat' ? 'Chat Completions' : p.type === 'openai_responses' ? 'Responses API' : 'Anthropic'}</p>
                     </div>
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    p.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'
+                    p.enabled ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'
                   }`}>
-                    {p.status === 'active' ? '已连接' : '未连接'}
+                    {p.enabled ? '已启用' : '已禁用'}
                   </span>
                 </div>
                 <div className="text-xs text-gray-400 mb-3 truncate">{p.baseUrl}</div>
@@ -433,7 +440,7 @@ function Routes({ routes, setRoutes, providers }: {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '', cliTool: 'codex' as Route['cliTool'], model: '',
-    providerId: '', protocolConversion: 'none' as Route['protocolConversion'], enabled: true,
+    providerId: '', enabled: true,
   })
 
   const loadRoutes = useCallback(async () => {
@@ -453,13 +460,13 @@ function Routes({ routes, setRoutes, providers }: {
     }
     setShowForm(false)
     setEditId(null)
-    setForm({ name: '', cliTool: 'codex', model: '', providerId: '', protocolConversion: 'none', enabled: true })
+    setForm({ name: '', cliTool: 'codex', model: '', providerId: '', enabled: true })
     loadRoutes()
   }
 
   const handleEdit = (r: Route) => {
     setEditId(r.id)
-    setForm({ name: r.name, cliTool: r.cliTool, model: r.model, providerId: r.providerId, protocolConversion: r.protocolConversion, enabled: r.enabled })
+    setForm({ name: r.name, cliTool: r.cliTool, model: r.model, providerId: r.providerId, enabled: r.enabled })
     setShowForm(true)
   }
 
@@ -487,7 +494,7 @@ function Routes({ routes, setRoutes, providers }: {
           <h1 className="text-xl font-bold text-gray-900">路由管理</h1>
           <p className="text-sm text-gray-500 mt-1">配置 CLI 工具到供应商的路由映射</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', cliTool: 'codex', model: '', providerId: '', protocolConversion: 'none', enabled: true }) }}
+        <button onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', cliTool: 'codex', model: '', providerId: '', enabled: true }) }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium"
           style={{ background: 'var(--primary)' }}>
           <Plus size={16} /> 添加路由
@@ -514,15 +521,6 @@ function Routes({ routes, setRoutes, providers }: {
                     <option value="claude-code">Claude Code</option>
                     <option value="cursor">Cursor</option>
                     <option value="custom">自定义</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">协议转换</label>
-                  <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    value={form.protocolConversion} onChange={e => setForm(f => ({ ...f, protocolConversion: e.target.value as Route['protocolConversion'] }))}>
-                    <option value="none">直通（无转换）</option>
-                    <option value="responses-to-chat">Responses → Chat</option>
-                    <option value="chat-to-responses">Chat → Responses</option>
                   </select>
                 </div>
               </div>
@@ -579,9 +577,9 @@ function Routes({ routes, setRoutes, providers }: {
                       <div className="text-sm text-gray-700 truncate">{r.model}</div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs px-1.5 py-0.5 rounded bg-violet-50 text-violet-600">
-                          {r.protocolConversion === 'none' ? '直通' : r.protocolConversion === 'responses-to-chat' ? 'R→C' : 'C→R'}
+                          {(r.cliTool === 'codex' && providers.find(pp => pp.id === r.providerId)?.type === 'openai_chat') ? 'R→C' : '直通'}
                         </span>
-                        {r.protocolConversion !== 'none' && (
+                        {(r.cliTool === 'codex' && providers.find(pp => pp.id === r.providerId)?.type === 'openai_chat') && (
                           <span className="text-xs text-gray-400 flex items-center gap-1">
                             <Shield size={10} /> 协议转换
                           </span>
@@ -591,7 +589,7 @@ function Routes({ routes, setRoutes, providers }: {
                     <ChevronRight size={16} className="text-gray-300 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-sm text-gray-700 truncate">{provider?.name || '未知'}</div>
-                      <div className="text-xs text-gray-400">{provider?.protocol || ''}</div>
+                      <div className="text-xs text-gray-400">{provider?.type === 'openai_chat' ? 'Chat Completions' : provider?.type === 'openai_responses' ? 'Responses API' : provider?.type === 'anthropic' ? 'Anthropic' : ''}</div>
                     </div>
                   </div>
 
