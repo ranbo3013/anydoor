@@ -298,13 +298,14 @@ function Providers({ providers, setProviders }: {
     setTesting(true)
     try {
       const res: any = await API.post(`/api/gateway/providers/${id}/test`)
-      if (res?.data?.success) {
-        alert('连接成功！')
+      console.log('handleTest result:', res)
+      if (res?.success) {
+        alert('✅ 连接成功！' + (res.message ? ' ' + res.message : ''))
       } else {
-        alert(`连接失败：${res?.data?.message || '请检查配置'}`)
+        alert('❌ 连接失败：' + (res?.message || '请检查配置'))
       }
-    } catch {
-      alert('连接失败，请检查配置')
+    } catch (e: any) {
+      alert('❌ 连接失败：' + (e.message || '请检查配置'))
     } finally {
       setTesting(false)
     }
