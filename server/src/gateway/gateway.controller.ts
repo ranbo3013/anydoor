@@ -6,7 +6,13 @@ import { GatewayService } from './gateway.service';
 import { Provider, RouteConfig } from './gateway.types';
 import * as store from './gateway.store';
 import { curlRequest, curlStream } from './curl-fetch';
-import { chatChunkToResponsesEvent } from './chat-to-responses';
+import {
+  resetSeq,
+  buildResponseCreated,
+  buildResponseInProgress,
+  processChatChunk,
+  CollectedContent,
+} from './chat-to-responses';
 
 @Controller('gateway')
 export class GatewayController {
@@ -266,22 +272,20 @@ export class GatewayController {
 
         const needConvert = originalEndpoint.includes('/responses');
 
-        // Accumulate content for building complete response.completed
-        const collectedContent = { text: '', toolCalls: [] as any[] };
+        // State for tracking conversion progress
+        const streamState = {
+          collectedContent: { text: '', toolCalls: [] } as CollectedContent,
+          hasStartedOutput: false,
+          hasStartedContent: false,
+        };
         let hasCompleted = false;
 
         if (needConvert) {
-          res.write(`data: ${JSON.stringify({
-            type: 'response.created',
-            response: {
-              id: responseId,
-              object: 'response',
-              status: 'in_progress',
-              created_at: Math.floor(Date.now() / 1000),
-              model,
-              output: [],
-            },
-          })}\n\n`);
+          resetSeq();
+          // Send response.created
+          res.write(`data: ${JSON.stringify(buildResponseCreated(responseId, model))}\n\n`);
+          // Send response.in_progress
+          res.write(`data: ${JSON.stringify(buildResponseInProgress(responseId, model))}\n\n`);
         }
 
         let buffer = '';
@@ -298,22 +302,15 @@ export class GatewayController {
               // Only send response.completed if we haven't already
               // (it's normally sent when finish_reason='stop' in the chunk)
               if (needConvert && !hasCompleted) {
-                res.write(`data: ${JSON.stringify({
-                  type: 'response.completed',
-                  response: {
-                    id: responseId,
-                    object: 'response',
-                    status: 'completed',
-                    created_at: Math.floor(Date.now() / 1000),
-                    model,
-                    output: collectedContent.text ? [{
-                      type: 'message',
-                      id: `msg_${Date.now()}`,
-                      role: 'assistant',
-                      content: [{ type: 'output_text', text: collectedContent.text }],
-                    }] : [],
-                  },
-                })}\n\n`);
+                const { buildOutputTextDone, buildContentPartDone, buildOutputItemDone, buildResponseCompleted } = require('./chat-to-responses');
+                if (streamState.hasStartedContent) {
+                  res.write(`data: ${JSON.stringify(buildOutputTextDone(streamState.collectedContent.text))}\n\n`);
+                  res.write(`data: ${JSON.stringify(buildContentPartDone(streamState.collectedContent.text))}\n\n`);
+                }
+                if (streamState.hasStartedOutput) {
+                  res.write(`data: ${JSON.stringify(buildOutputItemDone(streamState.collectedContent.text))}\n\n`);
+                }
+                res.write(`data: ${JSON.stringify(buildResponseCompleted(responseId, model, streamState.collectedContent))}\n\n`);
               }
               res.write('data: [DONE]\n\n');
               continue;
@@ -323,15 +320,19 @@ export class GatewayController {
               const parsed = JSON.parse(data);
 
               if (needConvert) {
-                const convertedEvent = targetFormat === 'anthropic'
-                  ? store.anthropicChunkToResponsesEvent(parsed, responseId)
-                  : chatChunkToResponsesEvent(parsed, responseId, collectedContent);
-
-                if (convertedEvent) {
-                  if (convertedEvent.type === 'response.completed') {
-                    hasCompleted = true;
+                if (targetFormat === 'anthropic') {
+                  const convertedEvent = store.anthropicChunkToResponsesEvent(parsed, responseId);
+                  if (convertedEvent) {
+                    res.write(`data: ${JSON.stringify(convertedEvent)}\n\n`);
                   }
-                  res.write(`data: ${JSON.stringify(convertedEvent)}\n\n`);
+                } else {
+                  const events = processChatChunk(parsed, responseId, model, streamState);
+                  for (const event of events) {
+                    if ((event as any).type === 'response.completed') {
+                      hasCompleted = true;
+                    }
+                    res.write(`data: ${JSON.stringify(event)}\n\n`);
+                  }
                 }
               } else {
                 res.write(`data: ${JSON.stringify(parsed)}\n\n`);
