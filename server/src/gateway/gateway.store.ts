@@ -197,12 +197,30 @@ export function responsesToChatCompletions(body: any): any {
       if (typeof item === 'string') {
         messages.push({ role: 'user', content: item });
       } else if (item.type === 'message') {
-        messages.push({
-          role: item.role,
-          content: Array.isArray(item.content)
-            ? item.content.map((c: any) => c.type === 'input_text' ? c.text : c.type === 'input_image' ? { type: 'image_url', image_url: { url: c.image_url } } : c).filter(Boolean)
-            : item.content,
-        });
+        // Map role: 'developer' -> 'system' for compatibility
+        let role = item.role;
+        if (role === 'developer') role = 'system';
+
+        // Convert content: always produce a plain string or a valid array of objects
+        let content: any;
+        if (Array.isArray(item.content)) {
+          // Check if all items are input_text - if so, concatenate into single string
+          const allText = item.content.every((c: any) => c.type === 'input_text');
+          if (allText) {
+            content = item.content.map((c: any) => c.text).join('\n\n');
+          } else {
+            // Mixed content: convert to OpenAI chat format
+            content = item.content.map((c: any) => {
+              if (c.type === 'input_text') return { type: 'text', text: c.text };
+              if (c.type === 'input_image') return { type: 'image_url', image_url: { url: c.image_url } };
+              return null;
+            }).filter(Boolean);
+          }
+        } else if (typeof item.content === 'string') {
+          content = item.content;
+        }
+
+        messages.push({ role, content });
       }
     }
   }

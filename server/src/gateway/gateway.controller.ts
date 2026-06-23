@@ -238,6 +238,14 @@ export class GatewayController {
         console.log('[Gateway Proxy] Converted Responses -> Chat Completions');
         console.log('[Gateway Proxy] Original input:', JSON.stringify(req.body.input)?.substring(0, 500));
         console.log('[Gateway Proxy] Converted messages:', JSON.stringify(upstreamBody.messages)?.substring(0, 500));
+        console.log('[Gateway Proxy] Full upstream body keys:', Object.keys(upstreamBody));
+        if (upstreamBody.tools) console.log('[Gateway Proxy] Tools count:', upstreamBody.tools.length);
+        if (upstreamBody.messages) {
+          upstreamBody.messages.forEach((m: any, i: number) => {
+            const contentType = typeof m.content === 'string' ? 'string' : Array.isArray(m.content) ? `array[${m.content.length}]` : typeof m.content;
+            console.log(`[Gateway Proxy] Message[${i}]: role=${m.role}, content_type=${contentType}`);
+          });
+        }
       } else {
         upstreamBody = req.body;
       }
