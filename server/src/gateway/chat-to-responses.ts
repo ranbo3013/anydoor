@@ -320,6 +320,8 @@ export interface StreamState {
   functionCallOutputsStarted: Set<string>;
   /** Current output index counter */
   nextOutputIndex: number;
+  /** Tracked usage from stream chunks */
+  usage: { inputTokens: number; outputTokens: number } | null;
 }
 
 export function createStreamState(): StreamState {
@@ -330,6 +332,7 @@ export function createStreamState(): StreamState {
     textOutputClosed: false,
     functionCallOutputsStarted: new Set(),
     nextOutputIndex: 0,
+    usage: null,
   };
 }
 
@@ -349,6 +352,16 @@ export function processChatChunk(
   const delta = chunk.choices?.[0]?.delta;
   const finishReason = chunk.choices?.[0]?.finish_reason;
   const chunkUsage = chunk.usage;
+
+  // Track usage from stream chunks
+  if (chunkUsage) {
+    state.usage = {
+      inputTokens: chunkUsage.prompt_tokens || 0,
+      outputTokens: chunkUsage.completion_tokens || chunkUsage.total_tokens
+        ? chunkUsage.total_tokens - (chunkUsage.prompt_tokens || 0)
+        : 0,
+    };
+  }
 
   // ── Handle text content delta ──
   if (delta?.content) {

@@ -227,6 +227,27 @@ export class GatewayController {
 
   // ========== Proxy Endpoint ==========
   // This is the main proxy that CLI tools connect to.
+
+  @Get('stats/usage')
+  getUsageStats(@Query() query: { provider?: string; model?: string; startDate?: string; endDate?: string }) {
+    const stats = store.getUsageStats({
+      provider: query.provider,
+      model: query.model,
+      startDate: query.startDate,
+      endDate: query.endDate,
+    });
+    return { code: 200, msg: 'success', data: stats };
+  }
+
+  @Get('stats/providers')
+  getDistinctProviders() {
+    return { code: 200, msg: 'success', data: store.getDistinctProviders() };
+  }
+
+  @Get('stats/models')
+  getDistinctModels() {
+    return { code: 200, msg: 'success', data: store.getDistinctModels() };
+  }
   // It intercepts requests, resolves routes, converts protocols, and forwards.
 
   @Post('proxy/*')
@@ -511,6 +532,7 @@ export class GatewayController {
             }
           }
           console.log(`[Gateway Proxy] ${ts()} Stream completed`);
+          const streamUsage = (streamState as any)?.usage as { inputTokens: number; outputTokens: number } | null | undefined;
           store.addLog({
             direction: 'outbound',
             cliTool,
@@ -519,6 +541,8 @@ export class GatewayController {
             endpoint: originalEndpoint,
             statusCode: code === 0 ? 200 : 502,
             duration: Date.now() - startTime,
+            inputTokens: streamUsage?.inputTokens || undefined,
+            outputTokens: streamUsage?.outputTokens || undefined,
           });
           res.end();
         });
@@ -596,6 +620,7 @@ export class GatewayController {
             const convertedResponse = targetFormat === 'anthropic'
               ? store.anthropicResponseToResponses(chatResponse)
               : store.chatResponseToResponses(chatResponse);
+            const respUsage = chatResponse.usage;
             store.addLog({
               direction: 'outbound',
               cliTool,
@@ -604,6 +629,8 @@ export class GatewayController {
               endpoint: originalEndpoint,
               statusCode: 200,
               duration: Date.now() - startTime,
+              inputTokens: respUsage?.prompt_tokens || undefined,
+              outputTokens: respUsage?.completion_tokens || undefined,
             });
             return res.status(HttpStatus.OK).json(convertedResponse);
           } catch {
@@ -619,6 +646,8 @@ export class GatewayController {
           endpoint: originalEndpoint,
           statusCode: 200,
           duration: Date.now() - startTime,
+          inputTokens: (() => { try { return JSON.parse(response.body)?.usage?.prompt_tokens; } catch { return undefined; } })(),
+          outputTokens: (() => { try { return JSON.parse(response.body)?.usage?.completion_tokens; } catch { return undefined; } })(),
         });
 
         return res.type('application/json').send(response.body);

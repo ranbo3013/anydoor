@@ -5,6 +5,7 @@ import {
   Power, PowerOff, RefreshCw, Download, Database,
   Terminal, Copy, CheckCircle2, XCircle, Clock,
   AlertTriangle, Info, ArrowRightLeft, Shield, Upload, RotateCcw, X,
+  ChartBar, TrendingUp, Coins, Calendar,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -59,7 +60,7 @@ interface LogStorageInfo {
   totalSizeKB: number
 }
 
-type Page = 'dashboard' | 'providers' | 'routes' | 'logs' | 'settings'
+type Page = 'dashboard' | 'providers' | 'routes' | 'stats' | 'logs' | 'settings'
 
 // ─── API Helper ──────────────────────────────────────────
 const API = {
@@ -145,6 +146,7 @@ const NAV_ITEMS: { key: Page; icon: LucideIcon; label: string }[] = [
   { key: 'dashboard', icon: LayoutDashboard, label: '仪表盘' },
   { key: 'providers', icon: Server, label: '供应商' },
   { key: 'routes', icon: Route, label: '路由' },
+  { key: 'stats', icon: ChartBar, label: '统计' },
   { key: 'logs', icon: ScrollText, label: '日志' },
   { key: 'settings', icon: SettingsIcon, label: '设置' },
 ]
@@ -763,6 +765,378 @@ function Routes({ routes, setRoutes, providers }: {
 // ─── Logs ────────────────────────────────────────────────
 const LOGS_PAGE_SIZE = 50
 
+// ─── Usage Stats Page ──────────────────────────────────────
+interface UsageStats {
+  totalRequests: number
+  successRequests: number
+  failedRequests: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalTokens: number
+  totalCost: number
+  avgDuration: number
+  byProvider: Record<string, { requests: number; inputTokens: number; outputTokens: number; cost: number }>
+  byModel: Record<string, { requests: number; inputTokens: number; outputTokens: number; cost: number }>
+  dailyUsage: { date: string; requests: number; inputTokens: number; outputTokens: number; cost: number }[]
+}
+
+function UsageStatsPage() {
+  const [stats, setStats] = useState<UsageStats | null>(null)
+  const [providers, setProviders] = useState<string[]>([])
+  const [models, setModels] = useState<string[]>([])
+  const [selectedProvider, setSelectedProvider] = useState('all')
+  const [selectedModel, setSelectedModel] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [quickRange, setQuickRange] = useState('7d')
+
+  const loadStats = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (selectedProvider !== 'all') params.set('provider', selectedProvider)
+      if (selectedModel !== 'all') params.set('model', selectedModel)
+      if (startDate) params.set('startDate', startDate)
+      if (endDate) params.set('endDate', endDate)
+      const data = await API.get<UsageStats>(`/api/gateway/stats/usage?${params.toString()}`)
+      setStats(data)
+    } catch (e) { console.error('Failed to load stats', e) }
+  }, [selectedProvider, selectedModel, startDate, endDate])
+
+  const loadFilters = useCallback(async () => {
+    try {
+      const [p, m] = await Promise.all([
+        API.get<string[]>('/api/gateway/stats/providers'),
+        API.get<string[]>('/api/gateway/stats/models'),
+      ])
+      setProviders(p)
+      setModels(m)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadFilters() }, [loadFilters])
+
+  useEffect(() => {
+    loadStats()
+    const timer = setInterval(loadStats, 30000)
+    return () => clearInterval(timer)
+  }, [loadStats])
+
+  // Quick range handler
+  const applyQuickRange = (range: string) => {
+    setQuickRange(range)
+    const now = new Date()
+    let start: Date
+    switch (range) {
+      case '1d': start = new Date(now.getTime() - 86400000); break
+      case '7d': start = new Date(now.getTime() - 7 * 86400000); break
+      case '30d': start = new Date(now.getTime() - 30 * 86400000); break
+      case '90d': start = new Date(now.getTime() - 90 * 86400000); break
+      default: return
+    }
+    setStartDate(start.toISOString().substring(0, 10))
+    setEndDate(now.toISOString().substring(0, 10))
+  }
+
+  // Initialize with 7d range
+  useEffect(() => {
+    if (!startDate && !endDate) applyQuickRange('7d')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const formatTokens = (n: number) => {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+    return n.toString()
+  }
+
+  const formatCost = (n: number) => {
+    if (n === 0) return '$0.00'
+    if (n < 0.01) return '<$0.01'
+    return '$' + n.toFixed(2)
+  }
+
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return ms + 'ms'
+    return (ms / 1000).toFixed(1) + 's'
+  }
+
+  // Bar chart max height helper
+  const maxDailyRequests = Math.max(...(stats?.dailyUsage.map(d => d.requests) || [1]), 1)
+  const maxDailyTokens = Math.max(...(stats?.dailyUsage.map(d => d.inputTokens + d.outputTokens) || [1]), 1)
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">使用统计</h1>
+          <p className="text-sm text-gray-500 mt-1">AI 模型使用情况和成本分析</p>
+        </div>
+        <button
+          onClick={loadStats}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <RefreshCw size={14} /> 刷新
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Quick range */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">快捷范围</label>
+            <div className="flex gap-1">
+              {[
+                { key: '1d', label: '1天' },
+                { key: '7d', label: '7天' },
+                { key: '30d', label: '30天' },
+                { key: '90d', label: '90天' },
+              ].map(r => (
+                <button
+                  key={r.key}
+                  onClick={() => applyQuickRange(r.key)}
+                  className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                    quickRange === r.key
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Date range */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">开始日期</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => { setStartDate(e.target.value); setQuickRange('') }}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">结束日期</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => { setEndDate(e.target.value); setQuickRange('') }}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white"
+            />
+          </div>
+          {/* Provider filter */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">供应商</label>
+            <select
+              value={selectedProvider}
+              onChange={e => setSelectedProvider(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white"
+            >
+              <option value="all">全部供应商</option>
+              {providers.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          {/* Model filter */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">模型</label>
+            <select
+              value={selectedModel}
+              onChange={e => setSelectedModel(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white"
+            >
+              <option value="all">全部模型</option>
+              {models.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity size={16} color="#3B82F6" />
+            <span className="text-xs font-medium text-gray-500">总请求数</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{stats?.totalRequests || 0}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            <span className="text-green-600">{stats?.successRequests || 0} 成功</span>
+            {' · '}
+            <span className="text-red-500">{stats?.failedRequests || 0} 失败</span>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap size={16} color="#8B5CF6" />
+            <span className="text-xs font-medium text-gray-500">总 Token 数</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{formatTokens(stats?.totalTokens || 0)}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            输入 {formatTokens(stats?.totalInputTokens || 0)} · 输出 {formatTokens(stats?.totalOutputTokens || 0)}
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Coins size={16} color="#F59E0B" />
+            <span className="text-xs font-medium text-gray-500">预估成本</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{formatCost(stats?.totalCost || 0)}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            基于模型定价估算
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock size={16} color="#10B981" />
+            <span className="text-xs font-medium text-gray-500">平均耗时</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{formatDuration(stats?.avgDuration || 0)}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            每次请求平均
+          </div>
+        </div>
+      </div>
+
+      {/* Daily Usage Chart */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">每日请求趋势</h3>
+        {stats?.dailyUsage && stats.dailyUsage.length > 0 ? (
+          <div className="space-y-3">
+            {/* Requests bar chart */}
+            <div>
+              <div className="text-xs text-gray-500 mb-2">请求数</div>
+              <div className="flex items-end gap-1" style={{ height: 120 }}>
+                {stats.dailyUsage.map((d, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                    <div
+                      className="w-full bg-blue-500 rounded-t-sm min-h-[2px] transition-all"
+                      style={{ height: `${Math.max((d.requests / maxDailyRequests) * 100, 1)}%` }}
+                      title={`${d.date}: ${d.requests} 请求`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* X-axis labels */}
+            <div className="flex gap-1">
+              {stats.dailyUsage.filter((_, i) => {
+                const step = Math.max(1, Math.floor(stats.dailyUsage.length / 8))
+                return i % step === 0
+              }).map((d, i, arr) => (
+                <div key={d.date} className="flex-1 text-center">
+                  <span className="text-[10px] text-gray-400">{d.date.substring(5)}</span>
+                </div>
+              ))}
+            </div>
+            {/* Tokens bar chart */}
+            <div className="mt-4">
+              <div className="text-xs text-gray-500 mb-2">Token 使用量</div>
+              <div className="flex items-end gap-1" style={{ height: 80 }}>
+                {stats.dailyUsage.map((d, i) => {
+                  const tokens = d.inputTokens + d.outputTokens
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                      <div className="w-full flex flex-col rounded-t-sm overflow-hidden min-h-[2px]" style={{ height: `${Math.max((tokens / maxDailyTokens) * 100, 1)}%` }}>
+                        <div className="bg-purple-400 flex-1" title={`输入: ${formatTokens(d.inputTokens)}`} />
+                        <div className="bg-purple-600" style={{ height: d.outputTokens > 0 ? '40%' : 0 }} title={`输出: ${formatTokens(d.outputTokens)}`} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+            暂无使用数据
+          </div>
+        )}
+      </div>
+
+      {/* By Provider / By Model tables */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* By Provider */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">按供应商</h3>
+          {stats?.byProvider && Object.keys(stats.byProvider).length > 0 ? (
+            <div className="space-y-2">
+              {Object.entries(stats.byProvider).sort((a, b) => b[1].requests - a[1].requests).map(([name, data]) => (
+                <div key={name} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{name}</div>
+                    <div className="text-xs text-gray-400">{data.requests} 请求 · {formatTokens(data.inputTokens + data.outputTokens)} tokens</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-gray-900">{formatCost(data.cost)}</div>
+                    <div className="text-xs text-gray-400">成本</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">暂无数据</div>
+          )}
+        </div>
+
+        {/* By Model */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">按模型</h3>
+          {stats?.byModel && Object.keys(stats.byModel).length > 0 ? (
+            <div className="space-y-2">
+              {Object.entries(stats.byModel).sort((a, b) => b[1].requests - a[1].requests).map(([name, data]) => (
+                <div key={name} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{name}</div>
+                    <div className="text-xs text-gray-400">{data.requests} 请求 · {formatTokens(data.inputTokens + data.outputTokens)} tokens</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-gray-900">{formatCost(data.cost)}</div>
+                    <div className="text-xs text-gray-400">成本</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">暂无数据</div>
+          )}
+        </div>
+      </div>
+
+      {/* Daily Usage Table */}
+      {stats?.dailyUsage && stats.dailyUsage.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">每日明细</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">日期</th>
+                  <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">请求数</th>
+                  <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">输入 Tokens</th>
+                  <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">输出 Tokens</th>
+                  <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">成本</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.dailyUsage.slice().reverse().map(d => (
+                  <tr key={d.date} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="py-2 px-3 text-gray-900">{d.date}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{d.requests}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{formatTokens(d.inputTokens)}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{formatTokens(d.outputTokens)}</td>
+                    <td className="py-2 px-3 text-right text-gray-900 font-medium">{formatCost(d.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<React.SetStateAction<ProxyLog[]>> }) {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
@@ -1144,6 +1518,7 @@ export default function App() {
           {page === 'dashboard' && <Dashboard providers={providers} routes={routes} logs={logs} />}
           {page === 'providers' && <Providers providers={providers} setProviders={setProviders} />}
           {page === 'routes' && <Routes routes={routes} setRoutes={setRoutes} providers={providers} />}
+          {page === 'stats' && <UsageStatsPage />}
           {page === 'logs' && <Logs logs={logs} setLogs={setLogs} />}
           {page === 'settings' && <SettingsPage />}
         </div>

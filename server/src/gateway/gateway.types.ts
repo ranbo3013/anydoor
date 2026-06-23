@@ -30,6 +30,9 @@ export interface ProxyLog {
   statusCode: number;
   duration: number;
   error?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cost?: number;
 }
 
 export interface GatewayStatus {

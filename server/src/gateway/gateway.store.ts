@@ -265,6 +265,131 @@ export function clearAllLogs(): void {
   }
 }
 
+// ========== Usage Statistics ==========
+
+export interface UsageStatsFilter {
+  provider?: string;
+  model?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface UsageStats {
+  totalRequests: number;
+  successRequests: number;
+  failedRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCost: number;
+  avgDuration: number;
+  byProvider: Record<string, { requests: number; inputTokens: number; outputTokens: number; cost: number }>;
+  byModel: Record<string, { requests: number; inputTokens: number; outputTokens: number; cost: number }>;
+  dailyUsage: { date: string; requests: number; inputTokens: number; outputTokens: number; cost: number }[];
+}
+
+export function getUsageStats(filter: UsageStatsFilter = {}): UsageStats {
+  const logs = readJsonFile<ProxyLog[]>(LOGS_FILE, []);
+
+  // Filter outbound logs only (actual API calls)
+  let filtered = logs.filter(l => l.direction === 'outbound');
+
+  // Apply filters
+  if (filter.provider && filter.provider !== 'all') {
+    filtered = filtered.filter(l => l.provider === filter.provider);
+  }
+  if (filter.model && filter.model !== 'all') {
+    filtered = filtered.filter(l => l.model === filter.model);
+  }
+  if (filter.startDate) {
+    const start = new Date(filter.startDate).getTime();
+    filtered = filtered.filter(l => new Date(l.timestamp).getTime() >= start);
+  }
+  if (filter.endDate) {
+    // Add 1 day to include the end date fully
+    const end = new Date(filter.endDate).getTime() + 86400000;
+    filtered = filtered.filter(l => new Date(l.timestamp).getTime() < end);
+  }
+
+  const stats: UsageStats = {
+    totalRequests: filtered.length,
+    successRequests: filtered.filter(l => l.statusCode >= 200 && l.statusCode < 300).length,
+    failedRequests: filtered.filter(l => l.statusCode < 200 || l.statusCode >= 300).length,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalTokens: 0,
+    totalCost: 0,
+    avgDuration: 0,
+    byProvider: {},
+    byModel: {},
+    dailyUsage: [],
+  };
+
+  let totalDuration = 0;
+  const dailyMap: Record<string, { requests: number; inputTokens: number; outputTokens: number; cost: number }> = {};
+
+  for (const log of filtered) {
+    const inTok = log.inputTokens || 0;
+    const outTok = log.outputTokens || 0;
+    const cost = log.cost || 0;
+
+    stats.totalInputTokens += inTok;
+    stats.totalOutputTokens += outTok;
+    stats.totalCost += cost;
+    totalDuration += log.duration;
+
+    // By provider
+    if (!stats.byProvider[log.provider]) {
+      stats.byProvider[log.provider] = { requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 };
+    }
+    stats.byProvider[log.provider].requests++;
+    stats.byProvider[log.provider].inputTokens += inTok;
+    stats.byProvider[log.provider].outputTokens += outTok;
+    stats.byProvider[log.provider].cost += cost;
+
+    // By model
+    if (!stats.byModel[log.model]) {
+      stats.byModel[log.model] = { requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 };
+    }
+    stats.byModel[log.model].requests++;
+    stats.byModel[log.model].inputTokens += inTok;
+    stats.byModel[log.model].outputTokens += outTok;
+    stats.byModel[log.model].cost += cost;
+
+    // Daily usage
+    const date = log.timestamp.substring(0, 10);
+    if (!dailyMap[date]) {
+      dailyMap[date] = { requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 };
+    }
+    dailyMap[date].requests++;
+    dailyMap[date].inputTokens += inTok;
+    dailyMap[date].outputTokens += outTok;
+    dailyMap[date].cost += cost;
+  }
+
+  stats.totalTokens = stats.totalInputTokens + stats.totalOutputTokens;
+  stats.avgDuration = filtered.length > 0 ? Math.round(totalDuration / filtered.length) : 0;
+
+  // Convert daily map to sorted array
+  stats.dailyUsage = Object.entries(dailyMap)
+    .map(([date, data]) => ({ date, ...data }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return stats;
+}
+
+export function getDistinctProviders(): string[] {
+  const logs = readJsonFile<ProxyLog[]>(LOGS_FILE, []);
+  const providers = new Set(logs.filter(l => l.direction === 'outbound').map(l => l.provider));
+  return Array.from(providers).sort();
+}
+
+export function getDistinctModels(): string[] {
+  const logs = readJsonFile<ProxyLog[]>(LOGS_FILE, []);
+  const models = new Set(logs.filter(l => l.direction === 'outbound').map(l => l.model));
+  return Array.from(models).sort();
+}
+
 // ========== Gateway Status ==========
 
 let totalRequests = 0;
