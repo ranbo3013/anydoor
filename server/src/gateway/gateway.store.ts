@@ -317,37 +317,46 @@ export function chatToAnthropic(body: any, model: string): any {
  * Convert Anthropic streaming event to Responses API format
  */
 export function anthropicChunkToResponsesEvent(event: any, responseId: string): any {
-  if (event.type === 'message_stop') {
-    return {
-      type: 'response.completed',
-      response: {
-        id: responseId,
-        object: 'response',
-        status: 'completed',
-        output: [],
-      },
-    };
-  }
+      if (event.type === 'message_stop') {
+        return {
+          eventType: 'response.completed',
+          data: {
+            type: 'response.completed',
+            response: {
+              id: responseId,
+              object: 'response',
+              status: 'completed',
+              output: [],
+            },
+          },
+        };
+      }
 
-  if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-    return {
-      type: 'response.output_text.delta',
-      output_index: 0,
-      content_index: 0,
-      delta: event.delta.text,
-    };
-  }
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        return {
+          eventType: 'response.output_text.delta',
+          data: {
+            type: 'response.output_text.delta',
+            output_index: 0,
+            content_index: 0,
+            delta: event.delta.text,
+          },
+        };
+      }
 
-  if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
-    return {
-      type: 'response.function_call_arguments.delta',
-      output_index: 0,
-      delta: event.delta.partial_json || '',
-    };
-  }
+      if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
+        return {
+          eventType: 'response.function_call_arguments.delta',
+          data: {
+            type: 'response.function_call_arguments.delta',
+            output_index: 0,
+            delta: event.delta.partial_json || '',
+          },
+        };
+      }
 
-  return null;
-}
+      return null;
+    }
 
 /**
  * Convert Anthropic response to Responses API format

@@ -11,6 +11,7 @@ import {
   buildResponseCreated,
   buildResponseInProgress,
   processChatChunk,
+  formatSseEvent,
   CollectedContent,
 } from './chat-to-responses';
 
@@ -283,9 +284,9 @@ export class GatewayController {
         if (needConvert) {
           resetSeq();
           // Send response.created
-          res.write(`data: ${JSON.stringify(buildResponseCreated(responseId, model))}\n\n`);
+          res.write(formatSseEvent(buildResponseCreated(responseId, model)));
           // Send response.in_progress
-          res.write(`data: ${JSON.stringify(buildResponseInProgress(responseId, model))}\n\n`);
+          res.write(formatSseEvent(buildResponseInProgress(responseId, model)));
         }
 
         let buffer = '';
@@ -304,14 +305,15 @@ export class GatewayController {
               if (needConvert && !hasCompleted) {
                 const { buildOutputTextDone, buildContentPartDone, buildOutputItemDone, buildResponseCompleted } = require('./chat-to-responses');
                 if (streamState.hasStartedContent) {
-                  res.write(`data: ${JSON.stringify(buildOutputTextDone(streamState.collectedContent.text))}\n\n`);
-                  res.write(`data: ${JSON.stringify(buildContentPartDone(streamState.collectedContent.text))}\n\n`);
+                  res.write(formatSseEvent(buildOutputTextDone(streamState.collectedContent.text)));
+                  res.write(formatSseEvent(buildContentPartDone(streamState.collectedContent.text)));
                 }
                 if (streamState.hasStartedOutput) {
-                  res.write(`data: ${JSON.stringify(buildOutputItemDone(streamState.collectedContent.text))}\n\n`);
+                  res.write(formatSseEvent(buildOutputItemDone(streamState.collectedContent.text)));
                 }
-                res.write(`data: ${JSON.stringify(buildResponseCompleted(responseId, model, streamState.collectedContent))}\n\n`);
+                res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
               }
+              // Always send [DONE] in plain SSE format (no event: line)
               res.write('data: [DONE]\n\n');
               continue;
             }
@@ -323,15 +325,15 @@ export class GatewayController {
                 if (targetFormat === 'anthropic') {
                   const convertedEvent = store.anthropicChunkToResponsesEvent(parsed, responseId);
                   if (convertedEvent) {
-                    res.write(`data: ${JSON.stringify(convertedEvent)}\n\n`);
+                    res.write(formatSseEvent(convertedEvent));
                   }
                 } else {
                   const events = processChatChunk(parsed, responseId, model, streamState);
                   for (const event of events) {
-                    if ((event as any).type === 'response.completed') {
+                    if (event.eventType === 'response.completed') {
                       hasCompleted = true;
                     }
-                    res.write(`data: ${JSON.stringify(event)}\n\n`);
+                    res.write(formatSseEvent(event));
                   }
                 }
               } else {
@@ -351,6 +353,36 @@ export class GatewayController {
         });
 
         curlProc.on('close', (code: number) => {
+          // Process any remaining buffer data
+          if (buffer.trim()) {
+            for (const line of buffer.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') {
+                if (needConvert && !hasCompleted) {
+                  const { buildResponseCompleted } = require('./chat-to-responses');
+                  res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+                }
+                res.write('data: [DONE]\n\n');
+                continue;
+              }
+              try {
+                const parsed = JSON.parse(data);
+                if (needConvert && targetFormat !== 'anthropic') {
+                  const events = processChatChunk(parsed, responseId, model, streamState);
+                  for (const event of events) {
+                    if (event.eventType === 'response.completed') hasCompleted = true;
+                    res.write(formatSseEvent(event));
+                  }
+                }
+              } catch { /* skip */ }
+            }
+          }
+          // Ensure response.completed is sent even if stream ended abruptly
+          if (needConvert && !hasCompleted) {
+            const { buildResponseCompleted } = require('./chat-to-responses');
+            res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+          }
           store.addLog({
             direction: 'outbound',
             cliTool,
