@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Server, Route, ScrollText, Settings as SettingsIcon,
   Activity, Zap, ChevronRight, Plus, Trash2, Edit3,
   Power, PowerOff, RefreshCw, Download, Database,
   Terminal, Copy, CheckCircle2, XCircle, Clock,
-  AlertTriangle, Info, ArrowRightLeft, Shield, Upload, RotateCcw,
+  AlertTriangle, Info, ArrowRightLeft, Shield, Upload, RotateCcw, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -86,6 +86,51 @@ const API = {
     const res = await fetch(url, { method: 'DELETE' })
     console.log(`DELETE ${url}`, res.status)
   },
+}
+
+// ─── Toast System ─────────────────────────────────────────────
+interface ToastItem { id: number; type: 'success' | 'error' | 'info'; message: string }
+let toastId = 0
+const toastListeners: Set<(toasts: ToastItem[]) => void> = new Set()
+let currentToasts: ToastItem[] = []
+
+function showToast(type: ToastItem['type'], message: string) {
+  const item: ToastItem = { id: ++toastId, type, message }
+  currentToasts = [...currentToasts, item]
+  toastListeners.forEach(fn => fn([...currentToasts]))
+}
+
+function dismissToast(id: number) {
+  currentToasts = currentToasts.filter(t => t.id !== id)
+  toastListeners.forEach(fn => fn([...currentToasts]))
+}
+
+function ToastContainer() {
+  const [toasts, setToasts] = React.useState<ToastItem[]>([])
+  React.useEffect(() => {
+    toastListeners.add(setToasts)
+    return () => { toastListeners.delete(setToasts) }
+  }, [])
+  if (toasts.length === 0) return null
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2" style={{ maxWidth: 420 }}>
+      {toasts.map(t => (
+        <div key={t.id}
+          className="flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg border"
+          style={{
+            background: t.type === 'error' ? '#FEF2F2' : t.type === 'success' ? '#F0FDF4' : '#EFF6FF',
+            borderColor: t.type === 'error' ? '#FECACA' : t.type === 'success' ? '#BBF7D0' : '#BFDBFE',
+          }}>
+          <span className="text-sm flex-1" style={{ color: t.type === 'error' ? '#991B1B' : t.type === 'success' ? '#166534' : '#1E40AF' }}>
+            {t.type === 'success' ? '✅ ' : t.type === 'error' ? '❌ ' : 'ℹ️ '}{t.message}
+          </span>
+          <button onClick={() => dismissToast(t.id)} className="text-gray-400 hover:text-gray-600 shrink-0 mt-0.5">
+            <X size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ─── Sidebar ─────────────────────────────────────────────
@@ -319,12 +364,12 @@ function Providers({ providers, setProviders }: {
       const res: any = await API.post(`/api/gateway/providers/${id}/test`)
       console.log('handleTest result:', res)
       if (res?.success) {
-        alert('✅ 连接成功！' + (res.message ? ' ' + res.message : ''))
+        showToast('success', '连接成功！' + (res.message ? ' ' + res.message : ''))
       } else {
-        alert('❌ 连接失败：' + (res?.message || '请检查配置'))
+        showToast('error', '连接失败：' + (res?.message || '请检查配置'))
       }
     } catch (e: any) {
-      alert('❌ 连接失败：' + (e.message || '请检查配置'))
+      showToast('error', '连接失败：' + (e.message || '请检查配置'))
     } finally {
       setTesting(false)
     }
@@ -332,7 +377,7 @@ function Providers({ providers, setProviders }: {
 
   const handleTestDirect = async () => {
     if (!form.baseUrl) {
-      alert('请先填写 Base URL')
+      showToast('info', '请先填写 Base URL')
       return
     }
     setTesting(true)
@@ -340,13 +385,13 @@ function Providers({ providers, setProviders }: {
       const res: any = await API.post('/api/gateway/providers/test', { baseUrl: form.baseUrl, apiKey: form.apiKey, type: form.type })
       console.log('Test result:', res)
       if (res?.success) {
-        alert('连接成功！')
+        showToast('success', '连接成功！')
       } else {
-        alert(`连接失败：${res?.message || '请检查 Base URL 和 API Key'}`)
+        showToast('error', `连接失败：${res?.message || '请检查 Base URL 和 API Key'}`)
       }
     } catch (e: any) {
       console.error('Test error:', e)
-      alert(`连接失败：${e?.message || '请检查 Base URL 和 API Key'}`)
+      showToast('error', `连接失败：${e?.message || '请检查 Base URL 和 API Key'}`)
     } finally {
       setTesting(false)
     }
@@ -354,7 +399,7 @@ function Providers({ providers, setProviders }: {
 
   const handleFetchModels = async () => {
     if (!form.baseUrl) {
-      alert('请先填写 Base URL')
+      showToast('info', '请先填写 Base URL')
       return
     }
     setTesting(true)
@@ -362,14 +407,14 @@ function Providers({ providers, setProviders }: {
       const res: any = await API.post('/api/gateway/providers/test', { baseUrl: form.baseUrl, apiKey: form.apiKey, type: form.type })
       if (res?.success && res?.models?.length > 0) {
         setForm({ ...form, models: res.models.join(', ') })
-        alert(`获取成功，发现 ${res.models.length} 个模型`)
+        showToast('success', `获取成功，发现 ${res.models.length} 个模型`)
       } else if (res?.success) {
-        alert('连接成功但未发现模型列表，请手动填写')
+        showToast('info', '连接成功但未发现模型列表，请手动填写')
       } else {
-        alert(`获取失败：${res?.message || '请检查 Base URL 和 API Key'}`)
+        showToast('error', `获取失败：${res?.message || '请检查 Base URL 和 API Key'}`)
       }
     } catch (e: any) {
-      alert(`获取失败：${e?.message || '请检查配置'}`)
+      showToast('error', `获取失败：${e?.message || '请检查配置'}`)
     } finally {
       setTesting(false)
     }
@@ -820,7 +865,7 @@ function SettingsPage() {
       await API.post('/api/gateway/auth', { enabled: authEnabled, token: newToken || undefined })
       setSaved(true); setTimeout(() => setSaved(false), 2000)
       setProxyToken(newToken || proxyToken); setNewToken('')
-    } catch { alert('保存失败') }
+    } catch { showToast('error', '保存失败') }
   }
 
   const handleExportConfig = async () => {
@@ -831,7 +876,7 @@ function SettingsPage() {
       const a = document.createElement('a')
       a.href = url; a.download = 'anydoor-config.json'; a.click()
       URL.revokeObjectURL(url)
-    } catch { alert('导出失败') }
+    } catch { showToast('error', '导出失败') }
   }
 
   const handleImportConfig = async () => {
@@ -845,10 +890,10 @@ function SettingsPage() {
         const config = JSON.parse(text)
         if (!confirm('导入将覆盖当前所有供应商和路由配置，确定继续？')) return
         await API.post('/api/gateway/config', config)
-        alert('配置导入成功，请刷新页面查看')
+        showToast('success', '配置导入成功，请刷新页面查看')
         window.location.reload()
       } catch (err: any) {
-        alert('导入失败: ' + (err.message || '配置文件格式错误'))
+        showToast('error', '导入失败: ' + (err.message || '配置文件格式错误'))
       }
     }
     input.click()
@@ -861,15 +906,15 @@ function SettingsPage() {
       await API.del('/api/gateway/providers')
       await API.del('/api/gateway/routes')
       await API.del('/api/gateway/logs')
-      alert('配置已重置，请刷新页面')
+      showToast('success', '配置已重置，请刷新页面')
       window.location.reload()
-    } catch { alert('重置失败') }
+    } catch { showToast('error', '重置失败') }
   }
 
   const handleClearLogs = async () => {
     if (confirm('确定清空所有请求日志？')) {
       await API.del('/api/gateway/logs')
-      alert('日志已清空')
+      showToast('success', '日志已清空')
     }
   }
 
@@ -1015,6 +1060,7 @@ export default function App() {
           {page === 'settings' && <SettingsPage />}
         </div>
       </main>
+      <ToastContainer />
     </div>
   )
 }
