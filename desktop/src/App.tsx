@@ -773,7 +773,7 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
               </tr>
             </thead>
             <tbody>
-              {logs.slice(0, 100).map(log => (
+              {[...logs].reverse().slice(0, 100).map(log => (
                 <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
                     <Clock size={12} className="inline mr-1" />
