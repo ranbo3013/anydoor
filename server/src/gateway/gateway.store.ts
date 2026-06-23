@@ -409,6 +409,10 @@ export function responsesToChatCompletions(body: any): any {
   if (body.frequency_penalty !== undefined) result.frequency_penalty = body.frequency_penalty;
   if (body.stop) result.stop = body.stop;
 
+  // Anti-repetition defaults: apply if not explicitly set by the caller
+  if (result.presence_penalty === undefined) result.presence_penalty = 0.1;
+  if (result.frequency_penalty === undefined) result.frequency_penalty = 0.1;
+
   // Convert tools
   if (body.tools && body.tools.length > 0) {
     result.tools = body.tools.map((tool: any) => {
