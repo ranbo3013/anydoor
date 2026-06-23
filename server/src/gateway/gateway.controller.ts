@@ -10,6 +10,10 @@ import {
   resetSeq,
   buildResponseCreated,
   buildResponseInProgress,
+  buildOutputTextDone,
+  buildContentPartDone,
+  buildOutputItemDone,
+  buildResponseCompleted,
   processChatChunk,
   formatSseEvent,
   CollectedContent,
@@ -292,18 +296,21 @@ export class GatewayController {
         let buffer = '';
 
         curlProc.stdout!.on('data', (chunk: Buffer) => {
-          buffer += chunk.toString();
+          const raw = chunk.toString();
+          console.log(`[Gateway Proxy] SSE chunk received (${raw.length} bytes): ${raw.substring(0, 200)}`);
+          buffer += raw;
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const data = line.slice(6).trim();
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (!trimmed.startsWith('data: ')) continue;
+            const data = trimmed.slice(6).trim();
             if (data === '[DONE]') {
               // Only send response.completed if we haven't already
               // (it's normally sent when finish_reason='stop' in the chunk)
               if (needConvert && !hasCompleted) {
-                const { buildOutputTextDone, buildContentPartDone, buildOutputItemDone, buildResponseCompleted } = require('./chat-to-responses');
                 if (streamState.hasStartedContent) {
                   res.write(formatSseEvent(buildOutputTextDone(streamState.collectedContent.text)));
                   res.write(formatSseEvent(buildContentPartDone(streamState.collectedContent.text)));
@@ -355,12 +362,12 @@ export class GatewayController {
         curlProc.on('close', (code: number) => {
           // Process any remaining buffer data
           if (buffer.trim()) {
-            for (const line of buffer.split('\n')) {
-              if (!line.startsWith('data: ')) continue;
+            for (const rawLine of buffer.split('\n')) {
+              const line = rawLine.trim();
+              if (!line || !line.startsWith('data: ')) continue;
               const data = line.slice(6).trim();
               if (data === '[DONE]') {
                 if (needConvert && !hasCompleted) {
-                  const { buildResponseCompleted } = require('./chat-to-responses');
                   res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
                 }
                 res.write('data: [DONE]\n\n');
@@ -380,7 +387,6 @@ export class GatewayController {
           }
           // Ensure response.completed is sent even if stream ended abruptly
           if (needConvert && !hasCompleted) {
-            const { buildResponseCompleted } = require('./chat-to-responses');
             res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
           }
           store.addLog({
