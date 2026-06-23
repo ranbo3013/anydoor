@@ -387,7 +387,11 @@ export class GatewayController {
                   writeSse(formatSseEvent(event));
                 }
               }
-              writeSse('data: [DONE]\n\n');
+              // Only forward [DONE] for non-converted streams (Chat Completions passthrough)
+              // Codex Responses API does not expect [DONE]
+              if (!needConvert) {
+                writeSse('data: [DONE]\n\n');
+              }
               continue;
             }
 
@@ -441,7 +445,10 @@ export class GatewayController {
                     writeSse(formatSseEvent(event));
                   }
                 }
-                writeSse('data: [DONE]\n\n');
+                // Only forward [DONE] for non-converted streams (Chat Completions passthrough)
+                if (!needConvert) {
+                  writeSse('data: [DONE]\n\n');
+                }
               } else {
                 try {
                   const parsed = JSON.parse(data);
