@@ -391,6 +391,51 @@ export function responsesToChatCompletions(body: any): any {
         }
 
         messages.push({ role, content });
+      } else if (item.type === 'function_call_output') {
+        // Codex sends tool results as function_call_output
+        // Convert to Chat Completions tool role message
+        messages.push({
+          role: 'tool',
+          tool_call_id: item.call_id,
+          content: typeof item.output === 'string' ? item.output : JSON.stringify(item.output),
+        });
+      }
+    }
+  }
+
+  // Check if we need to add assistant messages with tool_calls for previous function calls
+  // When Codex sends function_call_output items, there must be corresponding tool_calls in the assistant message
+  const toolCallOutputs = (Array.isArray(body.input) ? body.input : []).filter(
+    (item: any) => item.type === 'function_call_output'
+  );
+  if (toolCallOutputs.length > 0) {
+    // We need to insert an assistant message with tool_calls before the tool results
+    // Find existing function_call items in the input
+    const functionCalls = (Array.isArray(body.input) ? body.input : []).filter(
+      (item: any) => item.type === 'function_call'
+    );
+
+    if (functionCalls.length > 0) {
+      // Build the assistant message with tool_calls, placed before the first tool result
+      const assistantMsg: any = {
+        role: 'assistant',
+        content: null,
+        tool_calls: functionCalls.map((fc: any) => ({
+          id: fc.call_id,
+          type: 'function',
+          function: {
+            name: fc.name,
+            arguments: fc.arguments,
+          },
+        })),
+      };
+
+      // Find the position of the first tool result and insert assistant message before it
+      const firstToolResultIdx = messages.findIndex((m: any) => m.role === 'tool');
+      if (firstToolResultIdx >= 0) {
+        messages.splice(firstToolResultIdx, 0, assistantMsg);
+      } else {
+        messages.push(assistantMsg);
       }
     }
   }
