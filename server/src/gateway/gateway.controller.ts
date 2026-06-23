@@ -410,7 +410,7 @@ export class GatewayController {
                   for (const event of events) {
                     if (event.eventType === 'response.completed') {
                       hasCompleted = true;
-                      console.log(`[Gateway Proxy] ${ts()} SENDING response.completed, output items: ${event.data?.response?.output?.length}, content len: ${event.data?.response?.output?.[0]?.content?.[0]?.text?.length || 0}`);
+                      console.log(`[Gateway Proxy] ${ts()} SENDING response.completed, output items: ${(event.data as any)?.response?.output?.length}, content len: ${(event.data as any)?.response?.output?.[0]?.content?.[0]?.text?.length || 0}`);
                     }
                     console.log(`[Gateway Proxy] ${ts()} -> event: ${event.eventType}`);
                     writeSse(formatSseEvent(event));
@@ -468,7 +468,7 @@ export class GatewayController {
           }
           // Ensure response.completed is sent even if stream ended abruptly
           if (needConvert && !hasCompleted) {
-            const contentStr = typeof streamState.collectedContent === 'string' ? streamState.collectedContent.substring(0, 100) : JSON.stringify(streamState.collectedContent)?.substring(0, 100);
+            const contentStr = typeof (streamState as any).collectedContent === 'string' ? (streamState as any).collectedContent.substring(0, 100) : JSON.stringify((streamState as any).collectedContent)?.substring(0, 100);
             console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed, collectedContent: "${contentStr}"`);
             const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
             const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
