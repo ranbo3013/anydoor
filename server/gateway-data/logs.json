@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "direction": "inbound",
+    "cliTool": "codex",
+    "provider": "none",
+    "model": "deepseek-chat",
+    "endpoint": "/v1/responses",
+    "statusCode": 404,
+    "duration": 0,
+    "error": "No active route found for CLI tool: codex. Please configure a route in the gateway settings.",
+    "id": "log_1782207379023_afb7jw",
+    "timestamp": "2026-06-23T09:36:19.023Z"
+  }
+]
