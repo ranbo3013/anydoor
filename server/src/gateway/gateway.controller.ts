@@ -6,6 +6,7 @@ import { GatewayService } from './gateway.service';
 import { Provider, RouteConfig } from './gateway.types';
 import * as store from './gateway.store';
 import { curlRequest, curlStream } from './curl-fetch';
+import { chatChunkToResponsesEvent } from './chat-to-responses';
 
 @Controller('gateway')
 export class GatewayController {
@@ -265,10 +266,21 @@ export class GatewayController {
 
         const needConvert = originalEndpoint.includes('/responses');
 
+        // Accumulate content for building complete response.completed
+        const collectedContent = { text: '', toolCalls: [] as any[] };
+        let hasCompleted = false;
+
         if (needConvert) {
           res.write(`data: ${JSON.stringify({
             type: 'response.created',
-            response: { id: responseId, object: 'response', status: 'in_progress', model, output: [] },
+            response: {
+              id: responseId,
+              object: 'response',
+              status: 'in_progress',
+              created_at: Math.floor(Date.now() / 1000),
+              model,
+              output: [],
+            },
           })}\n\n`);
         }
 
@@ -283,10 +295,24 @@ export class GatewayController {
             if (!line.startsWith('data: ')) continue;
             const data = line.slice(6).trim();
             if (data === '[DONE]') {
-              if (needConvert) {
+              // Only send response.completed if we haven't already
+              // (it's normally sent when finish_reason='stop' in the chunk)
+              if (needConvert && !hasCompleted) {
                 res.write(`data: ${JSON.stringify({
                   type: 'response.completed',
-                  response: { id: responseId, object: 'response', status: 'completed', model, output: [] },
+                  response: {
+                    id: responseId,
+                    object: 'response',
+                    status: 'completed',
+                    created_at: Math.floor(Date.now() / 1000),
+                    model,
+                    output: collectedContent.text ? [{
+                      type: 'message',
+                      id: `msg_${Date.now()}`,
+                      role: 'assistant',
+                      content: [{ type: 'output_text', text: collectedContent.text }],
+                    }] : [],
+                  },
                 })}\n\n`);
               }
               res.write('data: [DONE]\n\n');
@@ -299,9 +325,12 @@ export class GatewayController {
               if (needConvert) {
                 const convertedEvent = targetFormat === 'anthropic'
                   ? store.anthropicChunkToResponsesEvent(parsed, responseId)
-                  : store.chatChunkToResponsesEvent(parsed, responseId);
+                  : chatChunkToResponsesEvent(parsed, responseId, collectedContent);
 
                 if (convertedEvent) {
+                  if (convertedEvent.type === 'response.completed') {
+                    hasCompleted = true;
+                  }
                   res.write(`data: ${JSON.stringify(convertedEvent)}\n\n`);
                 }
               } else {

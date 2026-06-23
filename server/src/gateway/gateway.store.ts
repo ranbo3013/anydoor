@@ -248,47 +248,6 @@ export function responsesToChatCompletions(body: any): any {
 }
 
 /**
- * Convert Chat Completions streaming chunk to Responses API streaming event
- */
-export function chatChunkToResponsesEvent(chunk: any, responseId: string): any {
-  const delta = chunk.choices?.[0]?.delta;
-  const finishReason = chunk.choices?.[0]?.finish_reason;
-
-  if (finishReason === 'stop' || finishReason === 'end_turn') {
-    return {
-      type: 'response.completed',
-      response: {
-        id: responseId,
-        object: 'response',
-        status: 'completed',
-        output: [],
-      },
-    };
-  }
-
-  if (delta?.content) {
-    return {
-      type: 'response.output_text.delta',
-      output_index: 0,
-      content_index: 0,
-      delta: delta.content,
-    };
-  }
-
-  if (delta?.tool_calls) {
-    return {
-      type: 'response.function_call_arguments.delta',
-      output_index: 0,
-      call_id: delta.tool_calls[0]?.id,
-      delta: delta.tool_calls[0]?.function?.arguments || '',
-    };
-  }
-
-  // For role or other non-content deltas, just skip
-  return null;
-}
-
-/**
  * Convert Chat Completions response to Responses API format
  */
 export function chatResponseToResponses(response: any): any {
