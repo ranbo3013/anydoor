@@ -236,6 +236,8 @@ export class GatewayController {
         // Convert Responses API to Chat Completions
         upstreamBody = store.responsesToChatCompletions(req.body);
         console.log('[Gateway Proxy] Converted Responses -> Chat Completions');
+        console.log('[Gateway Proxy] Original input:', JSON.stringify(req.body.input)?.substring(0, 500));
+        console.log('[Gateway Proxy] Converted messages:', JSON.stringify(upstreamBody.messages)?.substring(0, 500));
       } else {
         upstreamBody = req.body;
       }
