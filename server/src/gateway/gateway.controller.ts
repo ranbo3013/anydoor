@@ -320,6 +320,7 @@ export class GatewayController {
             firstChunk = false;
           }
           const raw = chunk.toString();
+          console.log(`[Gateway Proxy] ${ts()} RAW stdout (${raw.length} chars): ${raw.substring(0, 300)}`);
           buffer += raw;
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
@@ -359,10 +360,11 @@ export class GatewayController {
                   }
                 } else {
                   const events = processChatChunk(parsed, responseId, model, streamState);
+                  console.log(`[Gateway Proxy] ${ts()} processChatChunk: finish_reason=${parsed.choices?.[0]?.finish_reason}, events=${events.length}, types=${events.map(e => e.eventType).join(',')}`);
                   for (const event of events) {
                     if (event.eventType === 'response.completed') {
                       hasCompleted = true;
-                      console.log(`[Gateway Proxy] ${ts()} Sending response.completed (finish_reason: ${parsed.choices?.[0]?.finish_reason})`);
+                      console.log(`[Gateway Proxy] ${ts()} Sending response.completed`);
                     }
                     writeSse(formatSseEvent(event));
                   }
@@ -412,8 +414,10 @@ export class GatewayController {
           }
           // Ensure response.completed is sent even if stream ended abruptly
           if (needConvert && !hasCompleted) {
+            console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed (hasCompleted was false)`);
             writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
           }
+          console.log(`[Gateway Proxy] ${ts()} Calling res.end()`);
           store.addLog({
             direction: 'outbound',
             cliTool,
