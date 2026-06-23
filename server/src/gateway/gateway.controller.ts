@@ -10,13 +10,10 @@ import {
   resetSeq,
   buildResponseCreated,
   buildResponseInProgress,
-  buildOutputTextDone,
-  buildContentPartDone,
-  buildOutputItemDone,
-  buildResponseCompleted,
   processChatChunk,
   formatSseEvent,
-  CollectedContent,
+  createStreamState,
+  StreamState,
 } from './chat-to-responses';
 
 @Controller('gateway')
@@ -296,11 +293,7 @@ export class GatewayController {
         const needConvert = originalEndpoint.includes('/responses');
 
         // State for tracking conversion progress
-        const streamState = {
-          collectedContent: { text: '', toolCalls: [] } as CollectedContent,
-          hasStartedOutput: false,
-          hasStartedContent: false,
-        };
+        const streamState = createStreamState();
         let hasCompleted = false;
 
         if (needConvert) {
@@ -332,17 +325,15 @@ export class GatewayController {
             const data = trimmed.slice(6).trim();
             if (data === '[DONE]') {
               console.log(`[Gateway Proxy] ${ts()} Received [DONE] from upstream`);
-              // Only send response.completed if we haven't already
-              // (it's normally sent when finish_reason='stop' in the chunk)
+              // If conversion is needed and we haven't sent response.completed yet,
+              // send a fallback one now (processChatChunk normally handles this on finish_reason)
               if (needConvert && !hasCompleted) {
-                if (streamState.hasStartedContent) {
-                  writeSse(formatSseEvent(buildOutputTextDone(streamState.collectedContent.text)));
-                  writeSse(formatSseEvent(buildContentPartDone(streamState.collectedContent.text)));
+                // Force-close any remaining open output items using processChatChunk with a synthetic stop chunk
+                const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
+                const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
+                for (const event of fallbackEvents) {
+                  writeSse(formatSseEvent(event));
                 }
-                if (streamState.hasStartedOutput) {
-                  writeSse(formatSseEvent(buildOutputItemDone(streamState.collectedContent.text)));
-                }
-                writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
               }
               // Always send [DONE] in plain SSE format (no event: line)
               writeSse('data: [DONE]\n\n');
@@ -395,7 +386,12 @@ export class GatewayController {
               const data = line.slice(6).trim();
               if (data === '[DONE]') {
                 if (needConvert && !hasCompleted) {
-                  writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+                  const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
+                  const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
+                  for (const event of fallbackEvents) {
+                    if (event.eventType === 'response.completed') hasCompleted = true;
+                    writeSse(formatSseEvent(event));
+                  }
                 }
                 writeSse('data: [DONE]\n\n');
                 continue;
@@ -415,7 +411,11 @@ export class GatewayController {
           // Ensure response.completed is sent even if stream ended abruptly
           if (needConvert && !hasCompleted) {
             console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed (hasCompleted was false)`);
-            writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+            const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
+            const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
+            for (const event of fallbackEvents) {
+              writeSse(formatSseEvent(event));
+            }
           }
           console.log(`[Gateway Proxy] ${ts()} Calling res.end()`);
           store.addLog({
