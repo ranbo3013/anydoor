@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Server, Route, ScrollText, Settings as SettingsIcon,
-  Activity, Zap, ChevronRight, Plus, Trash2, Edit3,
+  Activity, Zap, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, Plus, Trash2, Edit3,
   Power, PowerOff, RefreshCw, Download, Database,
   Terminal, Copy, CheckCircle2, XCircle, Clock,
   AlertTriangle, Info, ArrowRightLeft, Shield, Upload, RotateCcw, X,
@@ -761,8 +761,11 @@ function Routes({ routes, setRoutes, providers }: {
 }
 
 // ─── Logs ────────────────────────────────────────────────
+const LOGS_PAGE_SIZE = 50
+
 function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<React.SetStateAction<ProxyLog[]>> }) {
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const loadLogs = useCallback(async () => {
     try {
@@ -778,18 +781,29 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
     return () => clearInterval(timer)
   }, [loadLogs, autoRefresh])
 
+  // Auto-refresh resets to page 1 when new logs arrive
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [logs.length])
+
   const statusColor = (code: number) => {
     if (code >= 200 && code < 300) return '#10B981'
     if (code >= 400 && code < 500) return '#F59E0B'
     return '#EF4444'
   }
 
+  // Reverse chronological order
+  const sortedLogs = [...logs].reverse()
+  const totalPages = Math.max(1, Math.ceil(sortedLogs.length / LOGS_PAGE_SIZE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const pagedLogs = sortedLogs.slice((safeCurrentPage - 1) * LOGS_PAGE_SIZE, safeCurrentPage * LOGS_PAGE_SIZE)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">请求日志</h1>
-          <p className="text-sm text-gray-500 mt-1">实时查看网关代理请求</p>
+          <p className="text-sm text-gray-500 mt-1">共 {logs.length} 条记录，按时间倒序排列</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={loadLogs}
@@ -811,42 +825,92 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
           <p className="text-sm">暂无请求日志</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="text-left px-5 py-3 font-medium text-gray-500">时间</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">方法</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">路径</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">状态</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">耗时</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">CLI</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">模型</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...logs].reverse().slice(0, 100).map(log => (
-                <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
-                    <Clock size={12} className="inline mr-1" />
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </td>
-                  <td className="px-5 py-3 font-mono text-xs">{log.method}</td>
-                  <td className="px-5 py-3 font-mono text-xs text-gray-600 max-w-48 truncate">{log.path}</td>
-                  <td className="px-5 py-3">
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                      style={{ background: `${statusColor(log.statusCode)}15`, color: statusColor(log.statusCode) }}>
-                      {log.statusCode}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-gray-500">{log.duration}ms</td>
-                  <td className="px-5 py-3 text-gray-600">{log.cliTool}</td>
-                  <td className="px-5 py-3 text-gray-600">{log.model}</td>
+        <>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">时间</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">方法</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">路径</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">状态</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">耗时</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">CLI</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">模型</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {pagedLogs.map(log => (
+                  <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
+                      <Clock size={12} className="inline mr-1" />
+                      {new Date(log.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td className="px-5 py-3 font-mono text-xs">{log.method}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-gray-600 max-w-48 truncate">{log.path}</td>
+                    <td className="px-5 py-3">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{ background: `${statusColor(log.statusCode)}15`, color: statusColor(log.statusCode) }}>
+                        {log.statusCode}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-gray-500">{log.duration}ms</td>
+                    <td className="px-5 py-3 text-gray-600">{log.cliTool}</td>
+                    <td className="px-5 py-3 text-gray-600">{log.model}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                第 {(safeCurrentPage - 1) * LOGS_PAGE_SIZE + 1}-{Math.min(safeCurrentPage * LOGS_PAGE_SIZE, sortedLogs.length)} 条，共 {sortedLogs.length} 条
+              </p>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setCurrentPage(1)} disabled={safeCurrentPage === 1}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronsLeft size={16} />
+                </button>
+                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safeCurrentPage === 1}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronLeft size={16} />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 1)
+                  .reduce<(number | string)[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('...')
+                    acc.push(p)
+                    return acc
+                  }, [])
+                  .map((p, idx) =>
+                    typeof p === 'string' ? (
+                      <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-sm">...</span>
+                    ) : (
+                      <button key={p} onClick={() => setCurrentPage(p)}
+                        className={`min-w-[32px] h-8 rounded-lg text-sm ${
+                          p === safeCurrentPage
+                            ? 'bg-violet-600 text-white'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}>
+                        {p}
+                      </button>
+                    )
+                  )}
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safeCurrentPage === totalPages}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRight size={16} />
+                </button>
+                <button onClick={() => setCurrentPage(totalPages)} disabled={safeCurrentPage === totalPages}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronsRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
