@@ -138,6 +138,7 @@ export function curlStream(url: string, options: CurlOptions = {}): ChildProcess
     '-s',                 // silent
     '-N',                 // no buffer (streaming)
     '--no-buffer',        // disable curl's internal buffering
+    '--compressed',       // auto-decompress gzip/br (needed since we send Accept-Encoding)
     '--connect-timeout', '10',
     '--max-time', String(timeout),
     '--tcp-nodelay',      // disable Nagle's algorithm for lower latency
