@@ -367,7 +367,7 @@ export function processChatChunk(
   // ── Handle tool calls delta ──
   if (delta?.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const callId = tc.id || `call_${Date.now()}`;
+      const tcIndex = tc.index ?? 0;
       const functionName = tc.function?.name || '';
       const argsDelta = tc.function?.arguments || '';
 
@@ -380,28 +380,37 @@ export function processChatChunk(
         events.push(buildMessageOutputItemDone(state.collectedContent.text, textIdx));
       }
 
-      // Find or create tool call in collected content
-      let existingTc = state.collectedContent.toolCalls.find(t => t.callId === callId);
+      // Find or create tool call by INDEX (not id — streaming chunks only have id in the first chunk)
+      let existingTc = state.collectedContent.toolCalls[tcIndex];
       if (!existingTc) {
-        existingTc = { id: tc.id || `tc_${Date.now()}`, callId, name: functionName, arguments: '' };
-        state.collectedContent.toolCalls.push(existingTc);
+        // First chunk for this tool call — it should have the id and name
+        const callId = tc.id || `call_${tcIndex}`;
+        existingTc = { id: tc.id || `tc_${tcIndex}`, callId, name: functionName, arguments: '' };
+        state.collectedContent.toolCalls[tcIndex] = existingTc;
+      } else if (tc.id) {
+        // Update id if this chunk has it (shouldn't happen but be safe)
+        existingTc.id = tc.id;
+        existingTc.callId = tc.id;
+      }
+      if (functionName && !existingTc.name) {
+        existingTc.name = functionName;
       }
       if (argsDelta) {
         existingTc.arguments += argsDelta;
       }
 
       // Start function call output if not started
-      if (!state.functionCallOutputsStarted.has(callId)) {
-        state.functionCallOutputsStarted.add(callId);
+      if (!state.functionCallOutputsStarted.has(existingTc.callId)) {
+        state.functionCallOutputsStarted.add(existingTc.callId);
         const fcOutputIdx = state.nextOutputIndex;
         state.nextOutputIndex++;
-        events.push(buildFunctionCallOutputItemAdded(fcOutputIdx, callId, functionName || existingTc.name));
+        events.push(buildFunctionCallOutputItemAdded(fcOutputIdx, existingTc.callId, existingTc.name));
       }
 
       // Emit arguments delta
       if (argsDelta) {
-        const fcOutputIdx = getOutputIndexForCallId(state, callId);
-        events.push(buildFunctionCallArgsDelta(callId, argsDelta, fcOutputIdx));
+        const fcOutputIdx = getOutputIndexForCallId(state, existingTc.callId);
+        events.push(buildFunctionCallArgsDelta(existingTc.callId, argsDelta, fcOutputIdx));
       }
     }
   }
@@ -433,7 +442,7 @@ export function processChatChunk(
 
 /** Get the output_index for a function call by its callId */
 function getOutputIndexForCallId(state: StreamState, callId: string): number {
-  const callIdx = state.collectedContent.toolCalls.findIndex(t => t.callId === callId);
+  const callIdx = state.collectedContent.toolCalls.findIndex(t => t?.callId === callId);
   // text output is index 0 (if present), function calls start after
   const textOffset = state.hasStartedTextOutput ? 1 : 0;
   return textOffset + callIdx;
