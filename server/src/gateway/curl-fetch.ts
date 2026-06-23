@@ -76,6 +76,8 @@ export function curlRequest(url: string, options: CurlOptions = {}): Promise<Cur
   const args = buildCurlArgs(url, options, [
     '-i',                 // include response headers
     '-w', '\n__CURL_STATUS__%{http_code}',  // append status code marker
+    '--connect-timeout', '10',
+    '--tcp-nodelay',
   ]);
 
   return new Promise((resolve, reject) => {
@@ -144,7 +146,9 @@ export function curlStream(url: string, options: CurlOptions = {}): ChildProcess
     '-s',                 // silent
     '-N',                 // no buffer (streaming)
     '--no-buffer',        // disable curl's internal buffering
+    '--connect-timeout', '10',  // fast connection timeout
     '--max-time', String(timeout),
+    '--tcp-nodelay',      // disable Nagle's algorithm for lower latency
   ];
 
   if (method !== 'GET') {

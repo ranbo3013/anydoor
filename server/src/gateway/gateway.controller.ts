@@ -236,14 +236,10 @@ export class GatewayController {
         // Convert Responses API to Chat Completions
         upstreamBody = store.responsesToChatCompletions(req.body);
         console.log('[Gateway Proxy] Converted Responses -> Chat Completions');
-        console.log('[Gateway Proxy] Original input:', JSON.stringify(req.body.input)?.substring(0, 500));
-        console.log('[Gateway Proxy] Converted messages:', JSON.stringify(upstreamBody.messages)?.substring(0, 500));
-        console.log('[Gateway Proxy] Full upstream body keys:', Object.keys(upstreamBody));
-        if (upstreamBody.tools) console.log('[Gateway Proxy] Tools count:', upstreamBody.tools.length);
         if (upstreamBody.messages) {
           upstreamBody.messages.forEach((m: any, i: number) => {
             const contentType = typeof m.content === 'string' ? 'string' : Array.isArray(m.content) ? `array[${m.content.length}]` : typeof m.content;
-            console.log(`[Gateway Proxy] Message[${i}]: role=${m.role}, content_type=${contentType}`);
+
           });
         }
       } else {
@@ -269,6 +265,14 @@ export class GatewayController {
       }
 
       console.log(`[Gateway Proxy] Forwarding via curl to: ${upstreamUrl} | Stream: ${isStream}`);
+
+      // Helper to write SSE event and flush immediately
+      const writeSse = (data: string) => {
+        res.write(data);
+        if (typeof (res as any).flush === 'function') {
+          (res as any).flush();
+        }
+      };
 
       if (isStream) {
         // Use curl subprocess for streaming (bypasses Cloudflare TLS fingerprint)
@@ -298,16 +302,15 @@ export class GatewayController {
         if (needConvert) {
           resetSeq();
           // Send response.created
-          res.write(formatSseEvent(buildResponseCreated(responseId, model)));
+          writeSse(formatSseEvent(buildResponseCreated(responseId, model)));
           // Send response.in_progress
-          res.write(formatSseEvent(buildResponseInProgress(responseId, model)));
+          writeSse(formatSseEvent(buildResponseInProgress(responseId, model)));
         }
 
         let buffer = '';
 
         curlProc.stdout!.on('data', (chunk: Buffer) => {
           const raw = chunk.toString();
-          console.log(`[Gateway Proxy] SSE chunk received (${raw.length} bytes): ${raw.substring(0, 200)}`);
           buffer += raw;
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
@@ -322,16 +325,16 @@ export class GatewayController {
               // (it's normally sent when finish_reason='stop' in the chunk)
               if (needConvert && !hasCompleted) {
                 if (streamState.hasStartedContent) {
-                  res.write(formatSseEvent(buildOutputTextDone(streamState.collectedContent.text)));
-                  res.write(formatSseEvent(buildContentPartDone(streamState.collectedContent.text)));
+                  writeSse(formatSseEvent(buildOutputTextDone(streamState.collectedContent.text)));
+                  writeSse(formatSseEvent(buildContentPartDone(streamState.collectedContent.text)));
                 }
                 if (streamState.hasStartedOutput) {
-                  res.write(formatSseEvent(buildOutputItemDone(streamState.collectedContent.text)));
+                  writeSse(formatSseEvent(buildOutputItemDone(streamState.collectedContent.text)));
                 }
-                res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+                writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
               }
               // Always send [DONE] in plain SSE format (no event: line)
-              res.write('data: [DONE]\n\n');
+              writeSse('data: [DONE]\n\n');
               continue;
             }
 
@@ -342,7 +345,7 @@ export class GatewayController {
                 if (targetFormat === 'anthropic') {
                   const convertedEvent = store.anthropicChunkToResponsesEvent(parsed, responseId);
                   if (convertedEvent) {
-                    res.write(formatSseEvent(convertedEvent));
+                    writeSse(formatSseEvent(convertedEvent));
                   }
                 } else {
                   const events = processChatChunk(parsed, responseId, model, streamState);
@@ -350,11 +353,11 @@ export class GatewayController {
                     if (event.eventType === 'response.completed') {
                       hasCompleted = true;
                     }
-                    res.write(formatSseEvent(event));
+                    writeSse(formatSseEvent(event));
                   }
                 }
               } else {
-                res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+                writeSse(`data: ${JSON.stringify(parsed)}\n\n`);
               }
             } catch {
               // Skip unparseable chunks
@@ -378,9 +381,9 @@ export class GatewayController {
               const data = line.slice(6).trim();
               if (data === '[DONE]') {
                 if (needConvert && !hasCompleted) {
-                  res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+                  writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
                 }
-                res.write('data: [DONE]\n\n');
+                writeSse('data: [DONE]\n\n');
                 continue;
               }
               try {
@@ -389,7 +392,7 @@ export class GatewayController {
                   const events = processChatChunk(parsed, responseId, model, streamState);
                   for (const event of events) {
                     if (event.eventType === 'response.completed') hasCompleted = true;
-                    res.write(formatSseEvent(event));
+                    writeSse(formatSseEvent(event));
                   }
                 }
               } catch { /* skip */ }
@@ -397,7 +400,7 @@ export class GatewayController {
           }
           // Ensure response.completed is sent even if stream ended abruptly
           if (needConvert && !hasCompleted) {
-            res.write(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
+            writeSse(formatSseEvent(buildResponseCompleted(responseId, model, streamState.collectedContent)));
           }
           store.addLog({
             direction: 'outbound',
