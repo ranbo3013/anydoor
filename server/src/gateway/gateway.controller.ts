@@ -182,6 +182,7 @@ export class GatewayController {
   @Post('proxy/*')
   async proxyRequest(@Req() req: Request, @Res() res: Response) {
     const startTime = Date.now();
+    const ts = () => `[+${Date.now() - startTime}ms]`;
     // Extract the original endpoint path (everything after /api/gateway/proxy/)
     const originalPath = req.params[0] || '';
     const originalEndpoint = `/${originalPath}`;
@@ -216,7 +217,8 @@ export class GatewayController {
     const targetFormat = store.getTargetFormat(provider.type, originalEndpoint);
     const upstreamUrl = store.buildUpstreamUrl(provider.baseUrl, targetFormat, originalEndpoint);
 
-    console.log(`[Gateway Proxy] Route: ${cliTool} -> ${provider.name} (${model}) | Format: ${targetFormat} | URL: ${upstreamUrl}`);
+    console.log(`[Gateway Proxy] ${ts()} ${req.method} ${originalEndpoint} (detected: ${cliTool})`);
+    console.log(`[Gateway Proxy] ${ts()} Route: ${cliTool} -> ${provider.name} (${model}) | Format: ${targetFormat} | URL: ${upstreamUrl}`);
 
     // Convert request body based on protocol
     let upstreamBody: any;
@@ -251,6 +253,7 @@ export class GatewayController {
 
     const isStream = upstreamBody.stream === true;
     const responseId = `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    console.log(`[Gateway Proxy] ${ts()} Body size: ${JSON.stringify(upstreamBody).length} bytes | Stream: ${isStream}`);
 
     try {
       const headers: Record<string, string> = {
@@ -264,7 +267,7 @@ export class GatewayController {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
       }
 
-      console.log(`[Gateway Proxy] Forwarding via curl to: ${upstreamUrl} | Stream: ${isStream}`);
+      console.log(`[Gateway Proxy] ${ts()} Forwarding via curl to: ${upstreamUrl} | Stream: ${isStream}`);
 
       // Helper to write SSE event and flush immediately
       const writeSse = (data: string) => {
@@ -282,6 +285,7 @@ export class GatewayController {
           body: JSON.stringify(upstreamBody),
           timeout: 120,
         });
+        console.log(`[Gateway Proxy] ${ts()} curl subprocess started`);
 
         // Handle SSE streaming
         res.setHeader('Content-Type', 'text/event-stream');
@@ -308,8 +312,13 @@ export class GatewayController {
         }
 
         let buffer = '';
+        let firstChunk = true;
 
         curlProc.stdout!.on('data', (chunk: Buffer) => {
+          if (firstChunk) {
+            console.log(`[Gateway Proxy] ${ts()} FIRST chunk from upstream (${chunk.length} bytes)`);
+            firstChunk = false;
+          }
           const raw = chunk.toString();
           buffer += raw;
           const lines = buffer.split('\n');
@@ -321,6 +330,7 @@ export class GatewayController {
             if (!trimmed.startsWith('data: ')) continue;
             const data = trimmed.slice(6).trim();
             if (data === '[DONE]') {
+              console.log(`[Gateway Proxy] ${ts()} Received [DONE] from upstream`);
               // Only send response.completed if we haven't already
               // (it's normally sent when finish_reason='stop' in the chunk)
               if (needConvert && !hasCompleted) {
@@ -352,6 +362,7 @@ export class GatewayController {
                   for (const event of events) {
                     if (event.eventType === 'response.completed') {
                       hasCompleted = true;
+                      console.log(`[Gateway Proxy] ${ts()} Sending response.completed (finish_reason: ${parsed.choices?.[0]?.finish_reason})`);
                     }
                     writeSse(formatSseEvent(event));
                   }
@@ -373,6 +384,7 @@ export class GatewayController {
         });
 
         curlProc.on('close', (code: number) => {
+          console.log(`[Gateway Proxy] ${ts()} curl process closed (code: ${code}), buffer remaining: ${buffer.length} bytes, hasCompleted: ${hasCompleted}`);
           // Process any remaining buffer data
           if (buffer.trim()) {
             for (const rawLine of buffer.split('\n')) {
@@ -438,6 +450,7 @@ export class GatewayController {
 
       } else {
         // Non-streaming: use curlRequest
+        console.log(`[Gateway Proxy] ${ts()} Non-streaming request via curl`);
         const response = await curlRequest(upstreamUrl, {
           method: 'POST',
           headers,
