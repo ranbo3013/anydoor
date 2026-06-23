@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import * as os from 'os';
 import { Provider, RouteConfig, ProxyLog, GatewayStatus, ApiFormat } from './gateway.types';
 
 // 优先使用 ANYDOOR_DATA_DIR 环境变量（Electron 设置为 ~/.anydoor/data）
@@ -211,6 +212,57 @@ export function addLog(log: Omit<ProxyLog, 'id' | 'timestamp'>): ProxyLog {
 
 export function clearLogs(): void {
   writeJsonFile(LOGS_FILE, []);
+}
+
+// ========== Log Storage Info & Cleanup ==========
+
+export interface LogStorageInfo {
+  proxyLogCount: number;
+  proxyLogSizeKB: number;
+  electronLogSizeKB: number;
+  totalSizeKB: number;
+}
+
+export function getLogStorageInfo(): LogStorageInfo {
+  // Proxy logs (logs.json)
+  let proxyLogSizeKB = 0;
+  let proxyLogCount = 0;
+  try {
+    const stats = fs.statSync(LOGS_FILE);
+    proxyLogSizeKB = Math.round(stats.size / 1024);
+    const logs = readJsonFile<ProxyLog[]>(LOGS_FILE, []);
+    proxyLogCount = logs.length;
+  } catch {}
+
+  // Electron main process log (anydoor.log)
+  let electronLogSizeKB = 0;
+  try {
+    const electronLogPath = path.join(os.homedir(), '.anydoor', 'logs', 'anydoor.log');
+    const stats = fs.statSync(electronLogPath);
+    electronLogSizeKB = Math.round(stats.size / 1024);
+  } catch {}
+
+  return {
+    proxyLogCount,
+    proxyLogSizeKB,
+    electronLogSizeKB,
+    totalSizeKB: proxyLogSizeKB + electronLogSizeKB,
+  };
+}
+
+export function clearAllLogs(): void {
+  // Clear proxy logs
+  writeJsonFile(LOGS_FILE, []);
+
+  // Truncate Electron main process log
+  try {
+    const electronLogPath = path.join(os.homedir(), '.anydoor', 'logs', 'anydoor.log');
+    if (fs.existsSync(electronLogPath)) {
+      fs.writeFileSync(electronLogPath, '');
+    }
+  } catch (err) {
+    console.log('[Gateway] Failed to clear electron log:', err.message);
+  }
 }
 
 // ========== Gateway Status ==========

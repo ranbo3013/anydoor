@@ -141,6 +141,20 @@ export class GatewayController {
     return { code: 200, msg: 'success', data: null };
   }
 
+  @Get('logs/storage')
+  getLogStorageInfo() {
+    console.log('[Gateway] GET /api/gateway/logs/storage');
+    const info = store.getLogStorageInfo();
+    return { code: 200, msg: 'success', data: info };
+  }
+
+  @Delete('logs/all')
+  clearAllLogs() {
+    console.log('[Gateway] DELETE /api/gateway/logs/all');
+    store.clearAllLogs();
+    return { code: 200, msg: 'success', data: null };
+  }
+
   // ========== Health Check ==========
 
   @Get('health')

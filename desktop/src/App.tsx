@@ -52,6 +52,13 @@ interface HealthStatus {
   }
 }
 
+interface LogStorageInfo {
+  proxyLogCount: number
+  proxyLogSizeKB: number
+  electronLogSizeKB: number
+  totalSizeKB: number
+}
+
 type Page = 'dashboard' | 'providers' | 'routes' | 'logs' | 'settings'
 
 // ─── API Helper ──────────────────────────────────────────
@@ -853,11 +860,14 @@ function SettingsPage() {
   const [newToken, setNewToken] = useState('')
   const [saved, setSaved] = useState(false)
 
+  const [logStorage, setLogStorage] = useState<LogStorageInfo | null>(null)
+
   useEffect(() => {
     API.get('/api/gateway/_info').then((data: unknown) => setGatewayInfo(data as { port: number; host: string; uptime: number; providerCount: number; routeCount: number })).catch(() => {})
     API.get('/api/gateway/auth').then((data: any) => {
       if (data) { setAuthEnabled(!!data.enabled); setProxyToken(data.token || '') }
     }).catch(() => {})
+    API.get('/api/gateway/logs/storage').then((data: any) => { if (data) setLogStorage(data) }).catch(() => {})
   }, [])
 
   const handleSaveAuth = async () => {
@@ -912,9 +922,14 @@ function SettingsPage() {
   }
 
   const handleClearLogs = async () => {
-    if (confirm('确定清空所有请求日志？')) {
-      await API.del('/api/gateway/logs')
-      showToast('success', '日志已清空')
+    const totalKB = logStorage?.totalSizeKB ?? 0
+    const sizeText = totalKB > 1024 ? `${(totalKB / 1024).toFixed(1)} MB` : `${totalKB} KB`
+    if (confirm(`确定清理所有日志文件？\n\n将清理：\n- 代理请求日志（${logStorage?.proxyLogCount ?? 0} 条）\n- Electron 进程日志\n\n预计释放 ${sizeText} 空间`)) {
+      try {
+        await API.del('/api/gateway/logs/all')
+        setLogStorage(null)
+        showToast('success', '所有日志已清理')
+      } catch { showToast('error', '清理失败') }
     }
   }
 
@@ -1008,10 +1023,19 @@ function SettingsPage() {
             className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-gray-700 hover:bg-gray-50 border border-gray-200 transition-colors">
             <Upload size={16} className="text-gray-400" /> 导入配置文件
           </button>
-          <button onClick={handleClearLogs}
-            className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-red-600 hover:bg-red-50 border border-red-200 transition-colors">
-            <Trash2 size={16} /> 清空请求日志
-          </button>
+          <div className="border border-red-200 rounded-lg overflow-hidden">
+            <button onClick={handleClearLogs}
+              className="flex items-center justify-between w-full px-4 py-3 text-sm text-left text-red-600 hover:bg-red-50 transition-colors">
+              <span className="flex items-center gap-2">
+                <Trash2 size={16} /> 清理所有日志
+              </span>
+              {logStorage && (
+                <span className="text-xs text-red-400">
+                  {logStorage.proxyLogCount} 条请求日志 · {logStorage.totalSizeKB > 1024 ? `${(logStorage.totalSizeKB / 1024).toFixed(1)} MB` : `${logStorage.totalSizeKB} KB`}
+                </span>
+              )}
+            </button>
+          </div>
           <button onClick={handleResetConfig}
             className="flex items-center gap-2 w-full px-4 py-3 rounded-lg text-sm text-left text-red-600 hover:bg-red-50 border border-red-200 transition-colors">
             <RotateCcw size={16} /> 重置所有配置
