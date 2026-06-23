@@ -353,7 +353,7 @@ export class GatewayController {
 
         curlProc.stdout!.on('data', (chunk: Buffer) => {
           if (firstChunk) {
-            console.log(`[Gateway Proxy] ${ts()} FIRST chunk from upstream (${chunk.length} bytes)`);
+            console.log(`[Gateway Proxy] ${ts()} FIRST chunk from upstream (${chunk.length} bytes): ${chunk.toString().substring(0, 200)}`);
             firstChunk = false;
           }
           sseBuffer += chunk.toString();
@@ -478,6 +478,7 @@ export class GatewayController {
           if (needConvert && !hasCompleted) {
             const contentStr = typeof (streamState as any).collectedContent === 'string' ? (streamState as any).collectedContent.substring(0, 100) : JSON.stringify((streamState as any).collectedContent)?.substring(0, 100);
             console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed, collectedContent: "${contentStr}"`);
+            console.log(`[Gateway Proxy] ${ts()} sseBuffer remaining (${sseBuffer.length} bytes): ${sseBuffer.substring(0, 300)}`);
             const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
             const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
             for (const event of fallbackEvents) {
