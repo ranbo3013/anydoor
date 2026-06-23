@@ -35,16 +35,20 @@ const DEFAULT_HEADERS: Record<string, string> = {
 };
 
 /**
- * Build curl argument array with default browser headers merged in.
+ * Execute a curl request and return the full response.
+ * Uses stdin (-d @-) to pass the body to avoid shell argument length limits.
  */
-function buildCurlArgs(url: string, options: CurlOptions, extraFlags: string[]): string[] {
+export function curlRequest(url: string, options: CurlOptions = {}): Promise<CurlResponse> {
   const { method = 'GET', headers = {}, body, timeout = 30000 } = options;
 
   const mergedHeaders = { ...DEFAULT_HEADERS, ...headers };
 
   const args: string[] = [
-    ...extraFlags,
+    '-i',                 // include response headers
+    '-w', '\n__CURL_STATUS__%{http_code}',  // append status code marker
     '--compressed',
+    '--connect-timeout', '10',
+    '--tcp-nodelay',
     '--max-time', String(Math.floor(timeout / 1000)),
     '-s',
   ];
@@ -57,33 +61,16 @@ function buildCurlArgs(url: string, options: CurlOptions, extraFlags: string[]):
     args.push('-H', `${key}: ${value}`);
   }
 
+  // Use stdin for body to avoid shell argument length limits
   if (body) {
-    args.push('-d', body);
+    args.push('-d', '@-');
   }
 
   args.push(url);
 
-  return args;
-}
-
-/**
- * Execute a curl request and return the full response.
- * Uses `curl -i` to capture both headers and body, then parses them.
- */
-export function curlRequest(url: string, options: CurlOptions = {}): Promise<CurlResponse> {
-  const { timeout = 30000 } = options;
-
-  const args = buildCurlArgs(url, options, [
-    '-i',                 // include response headers
-    '-w', '\n__CURL_STATUS__%{http_code}',  // append status code marker
-    '--connect-timeout', '10',
-    '--tcp-nodelay',
-  ]);
-
   return new Promise((resolve, reject) => {
-    execFile('curl', args, { maxBuffer: 10 * 1024 * 1024, timeout }, (error, stdout, stderr) => {
+    const proc = execFile('curl', args, { maxBuffer: 10 * 1024 * 1024, timeout }, (error, stdout, stderr) => {
       if (error && !stdout) {
-        // curl itself failed (network error, timeout, etc.)
         reject(error);
         return;
       }
@@ -94,7 +81,6 @@ export function curlRequest(url: string, options: CurlOptions = {}): Promise<Cur
       const output = statusMatch ? stdout.slice(0, stdout.lastIndexOf('__CURL_STATUS__')) : stdout;
 
       // Split headers and body (separated by \r\n\r\n)
-      // There might be multiple header blocks (e.g., 100-continue, 301 redirect), take the last one
       let headerSection = '';
       let responseBody = '';
 
@@ -129,11 +115,18 @@ export function curlRequest(url: string, options: CurlOptions = {}): Promise<Cur
         body: responseBody,
       });
     });
+
+    // Write body to stdin and close it
+    if (body) {
+      proc.stdin!.write(body);
+      proc.stdin!.end();
+    }
   });
 }
 
 /**
  * Spawn a curl process for streaming (SSE) responses.
+ * Uses stdin (-d @-) to pass the body to avoid shell argument length limits.
  * Returns the ChildProcess so the caller can pipe stdout.
  */
 export function curlStream(url: string, options: CurlOptions = {}): ChildProcess {
@@ -142,11 +135,10 @@ export function curlStream(url: string, options: CurlOptions = {}): ChildProcess
   const mergedHeaders = { ...DEFAULT_HEADERS, ...headers };
 
   const args: string[] = [
-    '--compressed',
     '-s',                 // silent
     '-N',                 // no buffer (streaming)
     '--no-buffer',        // disable curl's internal buffering
-    '--connect-timeout', '10',  // fast connection timeout
+    '--connect-timeout', '10',
     '--max-time', String(timeout),
     '--tcp-nodelay',      // disable Nagle's algorithm for lower latency
   ];
@@ -159,8 +151,9 @@ export function curlStream(url: string, options: CurlOptions = {}): ChildProcess
     args.push('-H', `${key}: ${value}`);
   }
 
+  // Use stdin for body to avoid shell argument length limits
   if (body) {
-    args.push('-d', body);
+    args.push('-d', '@-');
   }
 
   args.push(url);
@@ -168,6 +161,12 @@ export function curlStream(url: string, options: CurlOptions = {}): ChildProcess
   const proc = spawn('curl', args, {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+
+  // Write body to stdin and close it
+  if (body) {
+    proc.stdin!.write(body);
+    proc.stdin!.end();
+  }
 
   return proc;
 }
