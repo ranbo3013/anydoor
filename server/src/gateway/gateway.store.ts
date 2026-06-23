@@ -363,10 +363,36 @@ export function responsesToChatCompletions(body: any): any {
   if (typeof body.input === 'string') {
     messages.push({ role: 'user', content: body.input });
   } else if (Array.isArray(body.input)) {
+    // Process items in order, grouping consecutive function_call items into
+    // a single assistant message with tool_calls, followed by tool results.
+    // This is critical: each assistant(tool_calls) must be immediately
+    // followed by tool(result) messages for EVERY tool_call_id.
+    let pendingToolCalls: any[] = [];
+
+    const flushToolCalls = () => {
+      if (pendingToolCalls.length > 0) {
+        messages.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: pendingToolCalls.map((fc: any) => ({
+            id: fc.call_id,
+            type: 'function',
+            function: {
+              name: fc.name,
+              arguments: typeof fc.arguments === 'string' ? fc.arguments : JSON.stringify(fc.arguments),
+            },
+          })),
+        });
+        pendingToolCalls = [];
+      }
+    };
+
     for (const item of body.input) {
       if (typeof item === 'string') {
+        flushToolCalls();
         messages.push({ role: 'user', content: item });
       } else if (item.type === 'message') {
+        flushToolCalls();
         // Map role: 'developer' -> 'system' for compatibility
         let role = item.role;
         if (role === 'developer') role = 'system';
@@ -391,9 +417,35 @@ export function responsesToChatCompletions(body: any): any {
         }
 
         messages.push({ role, content });
+      } else if (item.type === 'function_call') {
+        // Accumulate consecutive function_calls into pending array.
+        // They'll be flushed into a single assistant(tool_calls) message
+        // when we encounter a function_call_output or other item type.
+        pendingToolCalls.push(item);
       } else if (item.type === 'function_call_output') {
-        // Codex sends tool results as function_call_output
-        // Convert to Chat Completions tool role message
+        // Flush any pending function_calls into an assistant message FIRST,
+        // then add the tool result. This ensures proper ordering:
+        // assistant(tool_calls) → tool(result) → tool(result) → ...
+        flushToolCalls();
+        // Check if there's already an assistant message with tool_calls matching this call_id
+        const hasMatchingAssistant = messages.some(
+          (m: any) => m.role === 'assistant' && m.tool_calls?.some((tc: any) => tc.id === item.call_id)
+        );
+        if (!hasMatchingAssistant) {
+          // Orphan function_call_output: the function_call was in a previous
+          // response (previous_response_id). Create a synthetic assistant message
+          // so DeepSeek doesn't reject the tool message.
+          console.log('[Gateway] WARNING: function_call_output without matching function_call, call_id:', item.call_id);
+          messages.push({
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: item.call_id,
+              type: 'function',
+              function: { name: 'unknown', arguments: '{}' },
+            }],
+          });
+        }
         messages.push({
           role: 'tool',
           tool_call_id: item.call_id,
@@ -401,41 +453,24 @@ export function responsesToChatCompletions(body: any): any {
         });
       }
     }
+
+    // Flush any remaining pending tool_calls (edge case: function_call without output)
+    flushToolCalls();
   }
 
-  // Check if we need to add assistant messages with tool_calls for previous function calls
-  // When Codex sends function_call_output items, there must be corresponding tool_calls in the assistant message
-  const toolCallOutputs = (Array.isArray(body.input) ? body.input : []).filter(
-    (item: any) => item.type === 'function_call_output'
-  );
-  if (toolCallOutputs.length > 0) {
-    // We need to insert an assistant message with tool_calls before the tool results
-    // Find existing function_call items in the input
-    const functionCalls = (Array.isArray(body.input) ? body.input : []).filter(
-      (item: any) => item.type === 'function_call'
-    );
-
-    if (functionCalls.length > 0) {
-      // Build the assistant message with tool_calls, placed before the first tool result
-      const assistantMsg: any = {
-        role: 'assistant',
-        content: null,
-        tool_calls: functionCalls.map((fc: any) => ({
-          id: fc.call_id,
-          type: 'function',
-          function: {
-            name: fc.name,
-            arguments: fc.arguments,
-          },
-        })),
-      };
-
-      // Find the position of the first tool result and insert assistant message before it
-      const firstToolResultIdx = messages.findIndex((m: any) => m.role === 'tool');
-      if (firstToolResultIdx >= 0) {
-        messages.splice(firstToolResultIdx, 0, assistantMsg);
-      } else {
-        messages.push(assistantMsg);
+  // Validate: every assistant message with tool_calls must be followed by
+  // tool messages for each tool_call_id. Log a warning if broken.
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'assistant' && msg.tool_calls?.length > 0) {
+      const expectedIds = new Set(msg.tool_calls.map((tc: any) => tc.id));
+      let j = i + 1;
+      while (j < messages.length && messages[j].role === 'tool') {
+        expectedIds.delete(messages[j].tool_call_id);
+        j++;
+      }
+      if (expectedIds.size > 0) {
+        console.log('[Gateway] WARNING: assistant tool_calls missing tool results for ids:', [...expectedIds]);
       }
     }
   }

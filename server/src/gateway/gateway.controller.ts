@@ -285,6 +285,16 @@ export class GatewayController {
         // Convert Responses API to Chat Completions
         upstreamBody = store.responsesToChatCompletions(req.body);
         console.log('[Gateway Proxy] Converted Responses -> Chat Completions');
+        // Log message structure for debugging tool_calls ordering
+        console.log('[Gateway Proxy] Messages structure:', upstreamBody.messages?.map((m: any) => {
+          if (m.role === 'assistant' && m.tool_calls) {
+            return { role: m.role, tool_call_ids: m.tool_calls.map((tc: any) => tc.id) };
+          }
+          if (m.role === 'tool') {
+            return { role: m.role, tool_call_id: m.tool_call_id };
+          }
+          return { role: m.role, content_length: typeof m.content === 'string' ? m.content.length : 'array' };
+        }));
       } else {
         upstreamBody = req.body;
       }
