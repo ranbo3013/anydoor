@@ -43,6 +43,15 @@ interface ProxyLog {
   provider: string
 }
 
+interface HealthStatus {
+  [providerId: string]: {
+    healthy: boolean
+    lastCheck: string
+    latency: number
+    error?: string
+  }
+}
+
 type Page = 'dashboard' | 'providers' | 'routes' | 'logs' | 'settings'
 
 // ─── API Helper ──────────────────────────────────────────
@@ -257,6 +266,7 @@ function Providers({ providers, setProviders }: {
   const [editId, setEditId] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
   const [form, setForm] = useState({ name: '', type: 'openai_chat' as Provider['type'], baseUrl: '', apiKey: '', models: '', enabled: true })
+  const [health, setHealth] = useState<HealthStatus>({})
 
   const loadProviders = useCallback(async () => {
     try {
@@ -266,6 +276,15 @@ function Providers({ providers, setProviders }: {
   }, [setProviders])
 
   useEffect(() => { loadProviders() }, [loadProviders])
+
+  const loadHealth = useCallback(async () => {
+    try {
+      const res = await API.get('/api/gateway/health')
+      if (res && typeof res === 'object') setHealth(res as HealthStatus)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadHealth(); const t = setInterval(loadHealth, 30000); return () => clearInterval(t) }, [loadHealth])
 
   const handleSave = async () => {
     const payload = {
@@ -465,7 +484,11 @@ function Providers({ providers, setProviders }: {
                       {p.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{p.name}</h3>
+                      <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                        {p.name}
+                        {health[p.id]?.healthy === true && <span className="w-2 h-2 rounded-full bg-emerald-500" title="连接正常" />}
+                        {health[p.id]?.healthy === false && <span className="w-2 h-2 rounded-full bg-red-500" title="连接异常" />}
+                      </h3>
                       <p className="text-xs text-gray-400">{p.type === 'openai_chat' ? 'Chat Completions' : p.type === 'openai_responses' ? 'Responses API' : 'Anthropic'}</p>
                     </div>
                   </div>
@@ -780,10 +803,25 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
 // ─── Settings ────────────────────────────────────────────
 function SettingsPage() {
   const [gatewayInfo, setGatewayInfo] = useState<{ port: number; host: string; uptime: number } | null>(null)
+  const [authEnabled, setAuthEnabled] = useState(false)
+  const [proxyToken, setProxyToken] = useState('')
+  const [newToken, setNewToken] = useState('')
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     API.get('/api/gateway/_info').then((data: unknown) => setGatewayInfo(data as { port: number; host: string; uptime: number; providerCount: number; routeCount: number })).catch(() => {})
+    API.get('/api/gateway/auth').then((data: any) => {
+      if (data) { setAuthEnabled(!!data.enabled); setProxyToken(data.token || '') }
+    }).catch(() => {})
   }, [])
+
+  const handleSaveAuth = async () => {
+    try {
+      await API.post('/api/gateway/auth', { enabled: authEnabled, token: newToken || undefined })
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+      setProxyToken(newToken || proxyToken); setNewToken('')
+    } catch { alert('保存失败') }
+  }
 
   const handleExportConfig = async () => {
     try {
@@ -864,6 +902,50 @@ function SettingsPage() {
             <span className="text-gray-500">运行时长</span>
             <span className="text-gray-900">{gatewayInfo?.uptime ? Math.floor(gatewayInfo.uptime / 60) + ' 分钟' : '—'}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Proxy Auth */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Shield size={18} className="text-gray-400" /> 代理鉴权
+        </h2>
+        <p className="text-xs text-gray-500 mb-4">开启后，CLI 工具需在请求头携带正确的 Authorization token 才能访问代理</p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-700">启用鉴权</span>
+            <button onClick={() => setAuthEnabled(!authEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${authEnabled ? 'bg-violet-500' : 'bg-gray-300'}`}>
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${authEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          {authEnabled && (
+            <>
+              {proxyToken && (
+                <div className="flex justify-between py-2 border-b border-gray-50">
+                  <span className="text-sm text-gray-500">当前 Token</span>
+                  <span className="font-mono text-sm text-gray-900">{proxyToken.slice(0, 8)}{'•'.repeat(8)}</span>
+                </div>
+              )}
+              <div>
+                <label className="text-sm text-gray-700 block mb-1">{proxyToken ? '更新 Token' : '设置 Token'}</label>
+                <input type="text" value={newToken} onChange={e => setNewToken(e.target.value)} placeholder={proxyToken ? '留空则保持当前' : '输入代理访问 Token'}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500" />
+              </div>
+              {authEnabled && proxyToken && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  <strong>CLI 配置需添加：</strong>
+                  <code className="block mt-1 bg-amber-100 rounded px-2 py-1 font-mono">
+                    export OPENAI_API_KEY={proxyToken}
+                  </code>
+                </div>
+              )}
+            </>
+          )}
+          <button onClick={handleSaveAuth}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-violet-500 hover:bg-violet-600 transition-colors">
+            {saved ? '已保存' : '保存'}
+          </button>
         </div>
       </div>
 
