@@ -85,6 +85,8 @@ async function curlRequestOnce(
       '--max-time', String(timeout),
       '-X', method,
       '--tcp-nodelay',                // Disable Nagle for faster streaming
+      '--http2',                      // Use HTTP/2
+      '--keepalive-time', '60',       // Keep connection alive
     ];
 
     // Add browser headers
@@ -191,6 +193,8 @@ export function curlStream(
     '--max-time', String(timeout),
     '-X', method,
     '--tcp-nodelay',                // Disable Nagle for faster streaming
+    '--http2',                      // Use HTTP/2 for multiplexing
+    '--keepalive-time', '60',       // Keep connection alive for 60s
   ];
 
   // Add browser headers
