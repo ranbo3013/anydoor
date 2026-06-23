@@ -1,214 +1,144 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Provider, RouteConfig, ProxyLog, GatewayStatus } from './gateway.types';
-import * as store from './gateway.store';
+import { Injectable } from '@nestjs/common';
+import { curlRequest, curlStream, CurlStreamCallbacks } from './curl-fetch';
+import {
+  getProviders, getProviderById, createProvider, updateProvider, deleteProvider,
+  getRoutes, createRoute, updateRoute, deleteRoute,
+  getLogs, addLog, clearLogs,
+  getGatewayStatus, incrementRequests,
+  replaceAllProviders, replaceAllRoutes,
+  getCachedModels, setCachedModels,
+  getProviderHealth, setProviderHealth, isHealthCheckNeeded, getAllProviderHealth,
+  decryptProvider,
+} from './gateway.store';
+import { Provider, RouteConfig, ProxyLog, GatewayStatus, ApiFormat } from './gateway.types';
 
 @Injectable()
 export class GatewayService {
-  private readonly logger = new Logger(GatewayService.name);
+  // ========== Provider CRUD ==========
 
-  // ========== Provider ==========
-
-  getProviders(): Provider[] {
-    return store.getProviders();
+  getAllProviders(): Provider[] {
+    return getProviders();
   }
 
-  getProviderById(id: string): Provider | undefined {
-    return store.getProviderById(id);
+  getProvider(id: string): Provider | undefined {
+    return getProviderById(id);
   }
 
   createProvider(data: Omit<Provider, 'id' | 'createdAt' | 'updatedAt'>): Provider {
-    this.logger.log(`Creating provider: ${data.name}`);
-    return store.createProvider(data);
+    return createProvider(data);
   }
 
   updateProvider(id: string, data: Partial<Provider>): Provider | null {
-    this.logger.log(`Updating provider: ${id}`);
-    return store.updateProvider(id, data);
+    return updateProvider(id, data);
   }
 
   deleteProvider(id: string): boolean {
-    this.logger.log(`Deleting provider: ${id}`);
-    return store.deleteProvider(id);
+    return deleteProvider(id);
   }
 
-  getAllProviders(): Provider[] {
-    return store.getProviders();
-  }
+  // ========== Route CRUD ==========
 
-  replaceAllProviders(providers: Provider[]): void {
-    this.logger.log(`Replacing all providers with ${providers.length} items`);
-    store.replaceAllProviders(providers);
-  }
-
-  // ========== Route ==========
-
-  getRoutes(): RouteConfig[] {
-    return store.getRoutes();
-  }
-
-  getRouteById(id: string): RouteConfig | undefined {
-    return store.getRouteById(id);
+  getAllRoutes(): RouteConfig[] {
+    return getRoutes();
   }
 
   createRoute(data: Omit<RouteConfig, 'id' | 'createdAt'>): RouteConfig {
-    this.logger.log(`Creating route: ${data.cliTool} -> ${data.providerId}`);
-    return store.createRoute(data);
+    return createRoute(data);
   }
 
   updateRoute(id: string, data: Partial<RouteConfig>): RouteConfig | null {
-    this.logger.log(`Updating route: ${id}`);
-    return store.updateRoute(id, data);
+    return updateRoute(id, data);
   }
 
   deleteRoute(id: string): boolean {
-    this.logger.log(`Deleting route: ${id}`);
-    return store.deleteRoute(id);
-  }
-
-  getAllRoutes(): RouteConfig[] {
-    return store.getRoutes();
-  }
-
-  replaceAllRoutes(routes: RouteConfig[]): void {
-    this.logger.log(`Replacing all routes with ${routes.length} items`);
-    store.replaceAllRoutes(routes);
+    return deleteRoute(id);
   }
 
   // ========== Logs ==========
 
   getLogs(limit?: number): ProxyLog[] {
-    return store.getLogs(limit);
+    return getLogs(limit);
   }
 
   clearLogs(): void {
-    store.clearLogs();
+    clearLogs();
   }
 
   // ========== Status ==========
 
   getStatus(proxyPort: number): GatewayStatus {
-    return store.getGatewayStatus(proxyPort);
+    return getGatewayStatus(proxyPort);
   }
 
-  // ========== Route Resolution ==========
-
-  /**
-   * Resolve which provider and model to use for a given CLI tool
-   */
-  resolveRoute(cliTool: string): { provider: Provider; model: string } | null {
-    const routes = store.getRoutes();
-    const enabledRoute = routes.find(r => r.cliTool === cliTool && r.enabled);
-    if (!enabledRoute) return null;
-
-    const provider = store.getProviderById(enabledRoute.providerId);
-    if (!provider || !provider.enabled) return null;
-
-    return { provider, model: enabledRoute.model };
+  incrementRequestCount(): number {
+    return incrementRequests();
   }
 
-  /**
-   * Test connectivity to a provider by ID
-   */
-  async testProvider(id: string): Promise<{ success: boolean; message: string; latency?: number }> {
-    const provider = store.getProviderById(id);
+  // ========== Import/Export ==========
+
+  replaceAllProviders(providers: Provider[]): void {
+    replaceAllProviders(providers);
+  }
+
+  replaceAllRoutes(routes: RouteConfig[]): void {
+    replaceAllRoutes(routes);
+  }
+
+  // ========== Test Connection ==========
+
+  async testProvider(id: string) {
+    const provider = getProviderById(id);
     if (!provider) {
-      return { success: false, message: 'Provider not found' };
+      return { success: false, message: '供应商不存在' };
     }
     return this.testProviderConnection(provider.baseUrl, provider.apiKey, provider.type);
   }
 
-  /**
-   * Test connectivity to a provider by URL and API key
-   */
-  async testProviderConnection(baseUrl: string, apiKey: string, type?: string): Promise<{ success: boolean; message: string; latency?: number; detail?: string; modelCount?: number; models?: string[] }> {
+  async testProviderDirect(baseUrl: string, apiKey: string, type: ApiFormat) {
+    return this.testProviderConnection(baseUrl, apiKey, type);
+  }
+
+  async testProviderConnection(baseUrl: string, apiKey: string, type: ApiFormat) {
     const startTime = Date.now();
+
     try {
-      const { curlRequest } = require('./curl-fetch');
-
-      // Normalize: remove trailing slashes
-      let normalizedUrl = baseUrl.replace(/\/+$/, '');
-
-      // Build the full test URL
       let testUrl: string;
-      let headers: Record<string, string>;
+      const headers: Record<string, string> = {};
 
       if (type === 'anthropic') {
-        testUrl = normalizedUrl.includes('/v1') ? `${normalizedUrl}/messages` : `${normalizedUrl}/v1/messages`;
-        headers = {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'Content-Type': 'application/json',
-        };
-      } else {
-        if (normalizedUrl.endsWith('/v1')) {
-          testUrl = `${normalizedUrl}/models`;
-        } else if (normalizedUrl.includes('/v1/')) {
-          testUrl = `${normalizedUrl}/models`;
+        // Anthropic: use /v1/messages with a minimal request
+        const base = baseUrl.replace(/\/+$/, '');
+        if (base.endsWith('/v1') || base.includes('/v1/')) {
+          testUrl = `${base}/messages`;
         } else {
-          testUrl = `${normalizedUrl}/v1/models`;
+          testUrl = `${base}/v1/messages`;
         }
-        headers = {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        };
-      }
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+        headers['Content-Type'] = 'application/json';
 
-      console.log(`[TestConnection] Testing via curl: ${testUrl} (type: ${type || 'openai_chat'})`);
+        const response = await curlRequest(testUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+          timeout: 15,
+        });
 
-      const response = await curlRequest(testUrl, { headers, timeout: 15000 });
-      const latency = Date.now() - startTime;
+        const latency = Date.now() - startTime;
 
-      console.log(`[TestConnection] Response: ${response.statusCode}, Body: ${response.body.substring(0, 200)}`);
-
-      if (response.statusCode === 200) {
-        try {
-          const data = JSON.parse(response.body);
-          const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id || m.name || m.model).filter(Boolean) : [];
-          const modelCount = models.length;
-          return {
-            success: true,
-            message: `连接成功 (${latency}ms)，可用模型: ${modelCount} 个`,
-            latency,
-            modelCount,
-            models,
-          };
-        } catch {
-          return {
-            success: true,
-            message: `连接成功 (${latency}ms)`,
-            latency,
-          };
+        if (response.statusCode === 200 || response.statusCode === 201) {
+          return { success: true, message: '连接成功', latency, modelCount: 0, models: [] };
         }
-      } else if (response.statusCode === 401 || response.statusCode === 403) {
-        return {
-          success: false,
-          message: 'API Key 无效或无权限',
-          latency,
-          detail: response.body.substring(0, 200),
-        };
-      } else if (response.statusCode === 404) {
-        return {
-          success: false,
-          message: 'API 端点不存在，请检查 Base URL 格式',
-          latency,
-          detail: `请求地址: ${testUrl}`,
-        };
-      } else if (response.statusCode === 0) {
-        return {
-          success: false,
-          message: '连接失败: 无法连接到服务器',
-          latency,
-          detail: '请检查 Base URL 是否正确，确保可以访问',
-        };
-      } else {
-        // Check if response looks like Cloudflare block page
-        if (response.body.includes('Cloudflare') || response.body.includes('blocked')) {
-          return {
-            success: false,
-            message: `被 Cloudflare 拦截 (HTTP ${response.statusCode})`,
-            latency,
-            detail: '该 API 地址启用了 Cloudflare 防护，请尝试使用其他 API 地址或联系服务商',
-          };
+        if (response.statusCode === 401 || response.statusCode === 403) {
+          return { success: false, message: 'API Key 无效', latency, detail: response.body.substring(0, 200) };
+        }
+        if (response.statusCode === 400) {
+          // 400 can mean the API is reachable but params are off
+          return { success: true, message: '连接成功（参数需调整）', latency, modelCount: 0, models: [] };
         }
         return {
           success: false,
@@ -217,6 +147,56 @@ export class GatewayService {
           detail: response.body.substring(0, 200),
         };
       }
+
+      // OpenAI-compatible: GET /v1/models
+      const base = baseUrl.replace(/\/+$/, '');
+      if (base.endsWith('/v1') || base.includes('/v1/')) {
+        testUrl = `${base}/models`;
+      } else {
+        testUrl = `${base}/v1/models`;
+      }
+
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const response = await curlRequest(testUrl, {
+        method: 'GET',
+        headers,
+        timeout: 15,
+      });
+
+      const latency = Date.now() - startTime;
+
+      if (response.statusCode === 200) {
+        try {
+          const data = JSON.parse(response.body);
+          const models = (data.data || []).map((m: any) => m.id).sort();
+          return { success: true, message: '连接成功', latency, modelCount: models.length, models };
+        } catch {
+          return { success: true, message: '连接成功（无法解析模型列表）', latency, modelCount: 0, models: [] };
+        }
+      }
+
+      if (response.statusCode === 401 || response.statusCode === 403) {
+        return { success: false, message: 'API Key 无效', latency, detail: response.body.substring(0, 200) };
+      }
+
+      // Check for Cloudflare blocking
+      if (response.body.includes('cloudflare') || response.body.includes('Sorry, you have been blocked')) {
+        return {
+          success: false,
+          message: '被 Cloudflare 拦截',
+          latency,
+          detail: '该 API 地址启用了 Cloudflare 防护，请尝试使用其他 API 地址或联系服务商',
+        };
+      }
+      return {
+        success: false,
+        message: `HTTP ${response.statusCode}`,
+        latency,
+        detail: response.body.substring(0, 200),
+      };
     } catch (err: any) {
       return {
         success: false,
@@ -225,5 +205,125 @@ export class GatewayService {
         detail: `请检查 Base URL 是否正确，确保可以访问。常见问题：URL 格式错误、网络代理、防火墙拦截`,
       };
     }
+  }
+
+  // ========== Fetch Models (with cache) ==========
+
+  async fetchModels(providerId: string): Promise<string[]> {
+    // Check cache first
+    const cached = getCachedModels(providerId);
+    if (cached) {
+      console.log(`[Gateway] Returning cached models for provider ${providerId}`);
+      return cached;
+    }
+
+    const provider = getProviderById(providerId);
+    if (!provider) return [];
+
+    try {
+      const base = provider.baseUrl.replace(/\/+$/, '');
+      let modelsUrl: string;
+      if (base.endsWith('/v1') || base.includes('/v1/')) {
+        modelsUrl = `${base}/models`;
+      } else {
+        modelsUrl = `${base}/v1/models`;
+      }
+
+      const headers: Record<string, string> = {};
+      if (provider.apiKey) {
+        headers['Authorization'] = `Bearer ${provider.apiKey}`;
+      }
+
+      const response = await curlRequest(modelsUrl, {
+        method: 'GET',
+        headers,
+        timeout: 15,
+      });
+
+      if (response.statusCode === 200) {
+        const data = JSON.parse(response.body);
+        const models = (data.data || []).map((m: any) => m.id).sort();
+        setCachedModels(providerId, provider.id, models);
+        return models;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  // ========== Health Check ==========
+
+  async checkProviderHealth(providerId: string): Promise<{ healthy: boolean; latency?: number; error?: string }> {
+    if (!isHealthCheckNeeded(providerId)) {
+      const health = getProviderHealth(providerId);
+      return { healthy: health?.healthy ?? false, latency: health?.latency, error: health?.error };
+    }
+
+    const provider = getProviderById(providerId);
+    if (!provider || !provider.enabled) {
+      setProviderHealth(providerId, { healthy: false, lastChecked: Date.now(), error: 'Provider disabled or not found' });
+      return { healthy: false, error: 'Provider disabled or not found' };
+    }
+
+    try {
+      const result = await this.testProviderConnection(provider.baseUrl, provider.apiKey, provider.type);
+      const healthData = {
+        healthy: result.success,
+        lastChecked: Date.now(),
+        latency: result.latency,
+        error: result.success ? undefined : result.message,
+      };
+      setProviderHealth(providerId, healthData);
+      return healthData;
+    } catch (err: any) {
+      const healthData = {
+        healthy: false,
+        lastChecked: Date.now(),
+        error: err.message,
+      };
+      setProviderHealth(providerId, healthData);
+      return healthData;
+    }
+  }
+
+  getProvidersWithHealth(): any[] {
+    const providers = getProviders();
+    return providers.map(p => {
+      const health = getProviderHealth(p.id);
+      return {
+        ...p,
+        health: health ? { healthy: health.healthy, lastChecked: health.lastChecked, latency: health.latency } : null,
+      };
+    });
+  }
+
+  // ========== Route Resolution ==========
+
+  resolveRoute(cliTool: string): { provider: Provider; route: RouteConfig } | null {
+    const routes = getRoutes();
+    const route = routes.find(r => r.cliTool === cliTool && r.enabled);
+    if (!route) return null;
+
+    const provider = getProviderById(route.providerId);
+    if (!provider || !provider.enabled) return null;
+
+    return { provider, route };
+  }
+
+  resolveRouteByModel(cliTool: string, model: string): { provider: Provider; route: RouteConfig } | null {
+    const routes = getRoutes();
+    // First try to find a route that matches the model
+    let route = routes.find(r => r.cliTool === cliTool && r.model === model && r.enabled);
+    if (!route) {
+      // Fall back to any route for this CLI tool
+      route = routes.find(r => r.cliTool === cliTool && r.enabled);
+    }
+    if (!route) return null;
+
+    const provider = getProviderById(route.providerId);
+    if (!provider || !provider.enabled) return null;
+
+    return { provider, route };
   }
 }

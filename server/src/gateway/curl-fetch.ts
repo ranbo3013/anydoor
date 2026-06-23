@@ -1,10 +1,12 @@
-/**
- * curl-fetch: Use curl subprocess for HTTP requests to bypass Cloudflare TLS fingerprint blocking.
- *
- * Node.js has a distinctive TLS fingerprint (JA3) that Cloudflare can detect and block.
- * curl's TLS fingerprint matches what browsers use, so it passes Cloudflare's checks.
- */
-import { execFile, spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
+
+// Browser-like headers to avoid Cloudflare blocking
+const BROWSER_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/event-stream',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Connection': 'keep-alive',
+};
 
 export interface CurlResponse {
   statusCode: number;
@@ -12,161 +14,223 @@ export interface CurlResponse {
   body: string;
 }
 
-export interface CurlOptions {
-  method?: string;
-  headers?: Record<string, string>;
-  body?: string;
-  timeout?: number;
+export interface CurlStreamCallbacks {
+  onChunk?: (rawData: string) => void;
+  onClose?: (code: number) => void;
+  onError?: (err: string) => void;
 }
 
 /**
- * Default browser-like headers to make curl requests look like a real browser.
- * These are merged with any custom headers passed by the caller.
+ * Execute an HTTP request using curl subprocess
+ * Supports retry on transient failures
  */
-const DEFAULT_HEADERS: Record<string, string> = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/event-stream, */*',
-  'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Connection': 'keep-alive',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'cross-site',
-};
+export async function curlRequest(
+  url: string,
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeout?: number;
+    maxRetries?: number;
+  } = {},
+): Promise<CurlResponse> {
+  const { maxRetries = 2, timeout = 30 } = options;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await curlRequestOnce(url, options);
+      // Retry on 5xx or Cloudflare blocking
+      if (result.statusCode >= 500 && attempt < maxRetries) {
+        console.log(`[curl-fetch] Attempt ${attempt + 1} failed with ${result.statusCode}, retrying...`);
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // Exponential backoff
+        continue;
+      }
+      return result;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        console.log(`[curl-fetch] Attempt ${attempt + 1} error: ${err.message}, retrying...`);
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError || new Error('Request failed after retries');
+}
 
 /**
- * Execute a curl request and return the full response.
- * Uses stdin (-d @-) to pass the body to avoid shell argument length limits.
+ * Single curl request attempt (no retry)
  */
-export function curlRequest(url: string, options: CurlOptions = {}): Promise<CurlResponse> {
-  const { method = 'GET', headers = {}, body, timeout = 30000 } = options;
-
-  const mergedHeaders = { ...DEFAULT_HEADERS, ...headers };
-
-  const args: string[] = [
-    '-i',                 // include response headers
-    '-w', '\n__CURL_STATUS__%{http_code}',  // append status code marker
-    '--compressed',
-    '--connect-timeout', '10',
-    '--tcp-nodelay',
-    '--max-time', String(Math.floor(timeout / 1000)),
-    '-s',
-  ];
-
-  if (method !== 'GET') {
-    args.push('-X', method);
-  }
-
-  for (const [key, value] of Object.entries(mergedHeaders)) {
-    args.push('-H', `${key}: ${value}`);
-  }
-
-  // Use stdin for body to avoid shell argument length limits
-  if (body) {
-    args.push('-d', '@-');
-  }
-
-  args.push(url);
-
+async function curlRequestOnce(
+  url: string,
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeout?: number;
+  } = {},
+): Promise<CurlResponse> {
   return new Promise((resolve, reject) => {
-    const proc = execFile('curl', args, { maxBuffer: 10 * 1024 * 1024, timeout }, (error, stdout, stderr) => {
-      if (error && !stdout) {
-        reject(error);
+    const method = options.method || 'GET';
+    const timeout = options.timeout || 30;
+
+    const args: string[] = [
+      '-s',                           // Silent mode
+      '-D', '-',                      // Dump headers to stdout
+      '-o', '-',                      // Output body to stdout
+      '-w', '\n__CURL_STATUS__%{http_code}',  // Append status code
+      '--compressed',                 // Handle compressed responses
+      '--connect-timeout', '10',
+      '--max-time', String(timeout),
+      '-X', method,
+      '--tcp-nodelay',                // Disable Nagle for faster streaming
+    ];
+
+    // Add browser headers
+    for (const [key, value] of Object.entries(BROWSER_HEADERS)) {
+      args.push('-H', `${key}: ${value}`);
+    }
+
+    // Add custom headers
+    if (options.headers) {
+      for (const [key, value] of Object.entries(options.headers)) {
+        args.push('-H', `${key}: ${value}`);
+      }
+    }
+
+    // Body via stdin
+    if (options.body) {
+      args.push('-d', '@-');
+    }
+
+    args.push(url);
+
+    const proc = spawn('curl', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    if (options.body) {
+      proc.stdin.write(options.body);
+      proc.stdin.end();
+    }
+
+    proc.on('close', (code) => {
+      if (code !== 0 && !stdout.includes('__CURL_STATUS__')) {
+        reject(new Error(`curl exited with code ${code}: ${stderr}`));
         return;
       }
 
-      // Extract the status code from the marker at the end
-      const statusMatch = stdout.match(/__CURL_STATUS__(\d+)\s*$/);
-      const statusCode = statusMatch ? parseInt(statusMatch[1]) : 0;
-      const output = statusMatch ? stdout.slice(0, stdout.lastIndexOf('__CURL_STATUS__')) : stdout;
+      // Parse status code from the trailer
+      const statusMatch = stdout.match(/__CURL_STATUS__(\d+)/);
+      const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+      stdout = stdout.replace(/__CURL_STATUS__\d+/, '');
 
-      // Split headers and body (separated by \r\n\r\n)
-      let headerSection = '';
-      let responseBody = '';
+      // Parse headers and body (separated by \r\n\r\n)
+      const headerEndIndex = stdout.indexOf('\r\n\r\n');
+      const headers: Record<string, string> = {};
 
-      const headerEndIdx = output.lastIndexOf('\r\n\r\n');
-      if (headerEndIdx !== -1) {
-        headerSection = output.slice(0, headerEndIdx);
-        responseBody = output.slice(headerEndIdx + 4);
-      } else {
-        responseBody = output;
-      }
+      if (headerEndIndex !== -1) {
+        const headerSection = stdout.substring(0, headerEndIndex);
+        const body = stdout.substring(headerEndIndex + 4);
 
-      // If there were redirects, take only the last response's headers
-      const redirectSplit = headerSection.split(/\r\n(?=HTTP\/)/);
-      const lastHeaderSection = redirectSplit[redirectSplit.length - 1] || headerSection;
-
-      // Parse headers
-      const headerLines = lastHeaderSection.split('\r\n');
-      const parsedHeaders: Record<string, string> = {};
-
-      for (const line of headerLines) {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0) {
-          const key = line.slice(0, colonIdx).trim().toLowerCase();
-          const value = line.slice(colonIdx + 1).trim();
-          parsedHeaders[key] = value;
+        // Parse headers
+        for (const line of headerSection.split('\r\n')) {
+          const colonIndex = line.indexOf(':');
+          if (colonIndex !== -1) {
+            const key = line.substring(0, colonIndex).trim().toLowerCase();
+            const value = line.substring(colonIndex + 1).trim();
+            headers[key] = value;
+          }
         }
-      }
 
-      resolve({
-        statusCode,
-        headers: parsedHeaders,
-        body: responseBody,
-      });
+        resolve({ statusCode, headers, body });
+      } else {
+        // No headers found, treat everything as body
+        resolve({ statusCode, headers, body: stdout });
+      }
     });
 
-    // Write body to stdin and close it
-    if (body) {
-      proc.stdin!.write(body);
-      proc.stdin!.end();
-    }
+    proc.on('error', (err) => {
+      reject(err);
+    });
   });
 }
 
 /**
- * Spawn a curl process for streaming (SSE) responses.
- * Uses stdin (-d @-) to pass the body to avoid shell argument length limits.
- * Returns the ChildProcess so the caller can pipe stdout.
+ * Execute a streaming HTTP request using curl subprocess
+ * Supports retry on connection failure
  */
-export function curlStream(url: string, options: CurlOptions = {}): ChildProcess {
-  const { method = 'POST', headers = {}, body, timeout = 120 } = options;
-
-  const mergedHeaders = { ...DEFAULT_HEADERS, ...headers };
+export function curlStream(
+  url: string,
+  callbacks: CurlStreamCallbacks,
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeout?: number;
+  } = {},
+): ChildProcess {
+  const method = options.method || 'GET';
+  const timeout = options.timeout || 120;
 
   const args: string[] = [
-    '-s',                 // silent
-    '-N',                 // no buffer (streaming)
-    '--no-buffer',        // disable curl's internal buffering
-    '--compressed',       // auto-decompress gzip/br (needed since we send Accept-Encoding)
+    '-N',                           // No buffering (stream immediately)
+    '--no-buffer',                  // Disable curl output buffering
+    '--compressed',                 // Handle compressed responses
     '--connect-timeout', '10',
     '--max-time', String(timeout),
-    '--tcp-nodelay',      // disable Nagle's algorithm for lower latency
+    '-X', method,
+    '--tcp-nodelay',                // Disable Nagle for faster streaming
   ];
 
-  if (method !== 'GET') {
-    args.push('-X', method);
-  }
-
-  for (const [key, value] of Object.entries(mergedHeaders)) {
+  // Add browser headers
+  for (const [key, value] of Object.entries(BROWSER_HEADERS)) {
     args.push('-H', `${key}: ${value}`);
   }
 
-  // Use stdin for body to avoid shell argument length limits
-  if (body) {
+  // Add custom headers
+  if (options.headers) {
+    for (const [key, value] of Object.entries(options.headers)) {
+      args.push('-H', `${key}: ${value}`);
+    }
+  }
+
+  // Body via stdin to avoid shell argument length limits
+  if (options.body) {
     args.push('-d', '@-');
   }
 
   args.push(url);
 
-  const proc = spawn('curl', args, {
-    stdio: ['pipe', 'pipe', 'pipe'],
+  const proc = spawn('curl', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+  proc.stdout.on('data', (data: Buffer) => {
+    callbacks.onChunk?.(data.toString());
   });
 
-  // Write body to stdin and close it
-  if (body) {
-    proc.stdin!.write(body);
-    proc.stdin!.end();
+  proc.stderr.on('data', (data: Buffer) => {
+    const msg = data.toString().trim();
+    if (msg) callbacks.onError?.(msg);
+  });
+
+  proc.on('close', (code) => {
+    callbacks.onClose?.(code || 0);
+  });
+
+  // Write body via stdin
+  if (options.body) {
+    proc.stdin.write(options.body);
+    proc.stdin.end();
   }
 
   return proc;

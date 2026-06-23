@@ -1,66 +1,35 @@
-import {
-  Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res, Logger, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { GatewayService } from './gateway.service';
-import { Provider, RouteConfig } from './gateway.types';
+import { Provider, RouteConfig, ProxyLog, ApiFormat } from './gateway.types';
 import * as store from './gateway.store';
 import { curlRequest, curlStream } from './curl-fetch';
 import {
-  resetSeq,
+  processChatChunk,
+  createStreamState,
   buildResponseCreated,
   buildResponseInProgress,
-  processChatChunk,
   formatSseEvent,
-  createStreamState,
-  StreamState,
+  resetSeq,
 } from './chat-to-responses';
 
 @Controller('gateway')
 export class GatewayController {
-  private readonly logger = new Logger(GatewayController.name);
-
   constructor(private readonly gatewayService: GatewayService) {}
-
-  // ========== Status ==========
-
-  @Get('status')
-  getStatus() {
-    console.log('[Gateway] GET /api/gateway/status');
-    const status = this.gatewayService.getStatus(3000);
-    return { code: 200, msg: 'success', data: status };
-  }
-
-  @Get('_info')
-  getInfo() {
-    console.log('[Gateway] GET /api/gateway/_info');
-    const providers = this.gatewayService.getProviders();
-    const routes = this.gatewayService.getRoutes();
-    return {
-      code: 200,
-      msg: 'success',
-      data: {
-        providerCount: providers.length,
-        routeCount: routes.length,
-        port: 3000,
-        host: 'localhost',
-      },
-    };
-  }
 
   // ========== Provider CRUD ==========
 
   @Get('providers')
-  getProviders() {
+  async getProviders() {
     console.log('[Gateway] GET /api/gateway/providers');
-    const providers = this.gatewayService.getProviders();
+    const providers = await this.gatewayService.getAllProviders();
     return { code: 200, msg: 'success', data: providers };
   }
 
   @Get('providers/:id')
   getProvider(@Param('id') id: string) {
     console.log(`[Gateway] GET /api/gateway/providers/${id}`);
-    const provider = this.gatewayService.getProviderById(id);
+    const provider = this.gatewayService.getProvider(id);
     if (!provider) {
       return { code: 404, msg: 'Provider not found', data: null };
     }
@@ -107,7 +76,7 @@ export class GatewayController {
     if (!body.baseUrl) {
       return { code: 400, msg: 'Base URL is required', data: { success: false, message: 'Base URL 不能为空' } };
     }
-    const result = await this.gatewayService.testProviderConnection(body.baseUrl, body.apiKey || '', body.type);
+    const result = await this.gatewayService.testProviderConnection(body.baseUrl, body.apiKey || '', (body.type || 'openai_chat') as ApiFormat);
     return { code: 200, msg: 'success', data: result };
   }
 
@@ -116,10 +85,10 @@ export class GatewayController {
   @Get('routes')
   getRoutes() {
     console.log('[Gateway] GET /api/gateway/routes');
-    const routes = this.gatewayService.getRoutes();
+    const routes = this.gatewayService.getAllRoutes();
     // Enrich routes with provider info
     const enriched = routes.map(r => {
-      const provider = this.gatewayService.getProviderById(r.providerId);
+      const provider = this.gatewayService.getProvider(r.providerId);
       return {
         ...r,
         providerName: provider?.name || 'Unknown',
@@ -172,6 +141,76 @@ export class GatewayController {
     return { code: 200, msg: 'success', data: null };
   }
 
+  // ========== Health Check ==========
+
+  @Get('health')
+  async healthCheck() {
+    const providers = await this.gatewayService.getAllProviders();
+    const routes = this.gatewayService.getAllRoutes();
+    const uptime = process.uptime();
+    return {
+      code: 200,
+      msg: 'success',
+      data: {
+        status: 'ok',
+        uptime: Math.floor(uptime),
+        providerCount: providers.length,
+        routeCount: routes.length,
+        activeRoutes: routes.filter(r => r.enabled).length,
+        version: '1.0.0',
+      },
+    };
+  }
+
+  // ========== Provider Health Status ==========
+
+  @Get('providers-health')
+  async getProvidersHealth() {
+    const providers = await this.gatewayService.getAllProviders();
+    const healthResults = await Promise.all(
+      providers.map(async (p) => {
+        try {
+          const result = await this.gatewayService.testProviderConnection(p.baseUrl, p.apiKey, p.type);
+          return {
+            id: p.id,
+            name: p.name,
+            healthy: result.success,
+            latency: result.latency,
+            lastChecked: Date.now(),
+          };
+        } catch {
+          return {
+            id: p.id,
+            name: p.name,
+            healthy: false,
+            latency: -1,
+            lastChecked: Date.now(),
+          };
+        }
+      })
+    );
+    return { code: 200, msg: 'success', data: healthResults };
+  }
+
+  // ========== Proxy Auth Token ==========
+
+  @Get('proxy-token')
+  getProxyToken() {
+    const token = store.getProxyToken();
+    return { code: 200, msg: 'success', data: { token, enabled: store.isProxyAuthEnabled() } };
+  }
+
+  @Post('proxy-token')
+  setProxyToken(@Body() body: { token?: string; enabled?: boolean }) {
+    if (body.token !== undefined) {
+      store.setProxyToken(body.token);
+    }
+    if (body.enabled !== undefined) {
+      store.setProxyAuthEnabled(body.enabled);
+    }
+    return { code: 200, msg: 'success', data: null };
+  }
+
   // ========== Proxy Endpoint ==========
   // This is the main proxy that CLI tools connect to.
   // It intercepts requests, resolves routes, converts protocols, and forwards.
@@ -180,6 +219,19 @@ export class GatewayController {
   async proxyRequest(@Req() req: Request, @Res() res: Response) {
     const startTime = Date.now();
     const ts = () => `[+${Date.now() - startTime}ms]`;
+
+    // Verify proxy auth token if enabled
+    if (store.isProxyAuthEnabled()) {
+      const authHeader = req.headers['authorization'] as string;
+      const expectedToken = store.getProxyToken();
+      const providedToken = authHeader?.replace('Bearer ', '') || authHeader?.replace('bearer ', '');
+      if (providedToken !== expectedToken) {
+        return res.status(HttpStatus.UNAUTHORIZED).json({
+          error: { message: 'Invalid proxy token', type: 'auth_error' },
+        });
+      }
+    }
+
     // Extract the original endpoint path (everything after /api/gateway/proxy/)
     const originalPath = req.params[0] || '';
     const originalEndpoint = `/${originalPath}`;
@@ -210,16 +262,15 @@ export class GatewayController {
       });
     }
 
-    const { provider, model } = route;
+    const { provider, route: routeConfig } = route;
+    const model = routeConfig.model;
     const targetFormat = store.getTargetFormat(provider.type, originalEndpoint);
     const upstreamUrl = store.buildUpstreamUrl(provider.baseUrl, targetFormat, originalEndpoint);
 
-    console.log(`[Gateway Proxy] ${ts()} ${req.method} ${originalEndpoint} (detected: ${cliTool})`);
     console.log(`[Gateway Proxy] ${ts()} Route: ${cliTool} -> ${provider.name} (${model}) | Format: ${targetFormat} | URL: ${upstreamUrl}`);
 
     // Convert request body based on protocol
     let upstreamBody: any;
-    let authHeader: string;
 
     if (targetFormat === 'anthropic') {
       upstreamBody = store.chatToAnthropic(
@@ -228,24 +279,16 @@ export class GatewayController {
           : req.body,
         model,
       );
-      authHeader = `x-api-key: ${provider.apiKey}`;
     } else {
       // openai_chat format
       if (originalEndpoint.includes('/responses')) {
         // Convert Responses API to Chat Completions
         upstreamBody = store.responsesToChatCompletions(req.body);
         console.log('[Gateway Proxy] Converted Responses -> Chat Completions');
-        if (upstreamBody.messages) {
-          upstreamBody.messages.forEach((m: any, i: number) => {
-            const contentType = typeof m.content === 'string' ? 'string' : Array.isArray(m.content) ? `array[${m.content.length}]` : typeof m.content;
-
-          });
-        }
       } else {
         upstreamBody = req.body;
       }
       upstreamBody.model = model;
-      authHeader = `Bearer ${provider.apiKey}`;
     }
 
     const isStream = upstreamBody.stream === true;
@@ -276,7 +319,7 @@ export class GatewayController {
 
       if (isStream) {
         // Use curl subprocess for streaming (bypasses Cloudflare TLS fingerprint)
-        const curlProc = curlStream(upstreamUrl, {
+        const curlProc = curlStream(upstreamUrl, {}, {
           method: 'POST',
           headers,
           body: JSON.stringify(upstreamBody),
@@ -304,7 +347,8 @@ export class GatewayController {
           writeSse(formatSseEvent(buildResponseInProgress(responseId, model)));
         }
 
-        let buffer = '';
+        // Improved SSE buffer: handle cross-chunk data: lines
+        let sseBuffer = '';
         let firstChunk = true;
 
         curlProc.stdout!.on('data', (chunk: Buffer) => {
@@ -312,36 +356,43 @@ export class GatewayController {
             console.log(`[Gateway Proxy] ${ts()} FIRST chunk from upstream (${chunk.length} bytes)`);
             firstChunk = false;
           }
-          const raw = chunk.toString();
-          console.log(`[Gateway Proxy] ${ts()} RAW stdout (${raw.length} chars): ${raw.substring(0, 300)}`);
-          buffer += raw;
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+          sseBuffer += chunk.toString();
 
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            if (!trimmed.startsWith('data: ')) continue;
-            const data = trimmed.slice(6).trim();
-            if (data === '[DONE]') {
+          // Process complete SSE events (delimited by double newline)
+          while (true) {
+            const eventEnd = sseBuffer.indexOf('\n\n');
+            if (eventEnd === -1) break; // No complete event yet
+
+            const eventBlock = sseBuffer.substring(0, eventEnd);
+            sseBuffer = sseBuffer.substring(eventEnd + 2);
+
+            // Parse each line in the event block
+            let eventData = '';
+            for (const line of eventBlock.split('\n')) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data: ')) {
+                eventData = trimmed.slice(6).trim();
+              }
+            }
+
+            if (!eventData) continue;
+
+            if (eventData === '[DONE]') {
               console.log(`[Gateway Proxy] ${ts()} Received [DONE] from upstream`);
-              // If conversion is needed and we haven't sent response.completed yet,
-              // send a fallback one now (processChatChunk normally handles this on finish_reason)
               if (needConvert && !hasCompleted) {
-                // Force-close any remaining open output items using processChatChunk with a synthetic stop chunk
                 const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
                 const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
                 for (const event of fallbackEvents) {
+                  if (event.eventType === 'response.completed') hasCompleted = true;
                   writeSse(formatSseEvent(event));
                 }
               }
-              // Always send [DONE] in plain SSE format (no event: line)
               writeSse('data: [DONE]\n\n');
               continue;
             }
 
             try {
-              const parsed = JSON.parse(data);
+              const parsed = JSON.parse(eventData);
 
               if (needConvert) {
                 if (targetFormat === 'anthropic') {
@@ -351,11 +402,9 @@ export class GatewayController {
                   }
                 } else {
                   const events = processChatChunk(parsed, responseId, model, streamState);
-                  console.log(`[Gateway Proxy] ${ts()} processChatChunk: finish_reason=${parsed.choices?.[0]?.finish_reason}, events=${events.length}, types=${events.map(e => e.eventType).join(',')}`);
                   for (const event of events) {
                     if (event.eventType === 'response.completed') {
                       hasCompleted = true;
-                      console.log(`[Gateway Proxy] ${ts()} Sending response.completed`);
                     }
                     writeSse(formatSseEvent(event));
                   }
@@ -377,13 +426,12 @@ export class GatewayController {
         });
 
         curlProc.on('close', (code: number) => {
-          console.log(`[Gateway Proxy] ${ts()} curl process closed (code: ${code}), buffer remaining: ${buffer.length} bytes, hasCompleted: ${hasCompleted}`);
+          console.log(`[Gateway Proxy] ${ts()} curl process closed (code: ${code}), buffer remaining: ${sseBuffer.length} bytes, hasCompleted: ${hasCompleted}`);
           // Process any remaining buffer data
-          if (buffer.trim()) {
-            for (const rawLine of buffer.split('\n')) {
-              const line = rawLine.trim();
-              if (!line || !line.startsWith('data: ')) continue;
-              const data = line.slice(6).trim();
+          if (sseBuffer.trim()) {
+            const remaining = sseBuffer.trim();
+            if (remaining.startsWith('data: ')) {
+              const data = remaining.slice(6).trim();
               if (data === '[DONE]') {
                 if (needConvert && !hasCompleted) {
                   const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
@@ -394,30 +442,30 @@ export class GatewayController {
                   }
                 }
                 writeSse('data: [DONE]\n\n');
-                continue;
-              }
-              try {
-                const parsed = JSON.parse(data);
-                if (needConvert && targetFormat !== 'anthropic') {
-                  const events = processChatChunk(parsed, responseId, model, streamState);
-                  for (const event of events) {
-                    if (event.eventType === 'response.completed') hasCompleted = true;
-                    writeSse(formatSseEvent(event));
+              } else {
+                try {
+                  const parsed = JSON.parse(data);
+                  if (needConvert && targetFormat !== 'anthropic') {
+                    const events = processChatChunk(parsed, responseId, model, streamState);
+                    for (const event of events) {
+                      if (event.eventType === 'response.completed') hasCompleted = true;
+                      writeSse(formatSseEvent(event));
+                    }
                   }
-                }
-              } catch { /* skip */ }
+                } catch { /* skip */ }
+              }
             }
           }
           // Ensure response.completed is sent even if stream ended abruptly
           if (needConvert && !hasCompleted) {
-            console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed (hasCompleted was false)`);
+            console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed`);
             const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
             const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
             for (const event of fallbackEvents) {
               writeSse(formatSseEvent(event));
             }
           }
-          console.log(`[Gateway Proxy] ${ts()} Calling res.end()`);
+          console.log(`[Gateway Proxy] ${ts()} Stream completed`);
           store.addLog({
             direction: 'outbound',
             cliTool,
@@ -453,13 +501,14 @@ export class GatewayController {
         });
 
       } else {
-        // Non-streaming: use curlRequest
+        // Non-streaming: use curlRequest with retry
         console.log(`[Gateway Proxy] ${ts()} Non-streaming request via curl`);
         const response = await curlRequest(upstreamUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(upstreamBody),
           timeout: 60000,
+          maxRetries: 2,
         });
 
         if (response.statusCode >= 400) {
@@ -551,6 +600,18 @@ export class GatewayController {
 
   @Get('proxy/*')
   async proxyGetRequest(@Req() req: Request, @Res() res: Response) {
+    // Verify proxy auth token if enabled
+    if (store.isProxyAuthEnabled()) {
+      const authHeader = req.headers['authorization'] as string;
+      const expectedToken = store.getProxyToken();
+      const providedToken = authHeader?.replace('Bearer ', '') || authHeader?.replace('bearer ', '');
+      if (providedToken !== expectedToken) {
+        return res.status(HttpStatus.UNAUTHORIZED).json({
+          error: { message: 'Invalid proxy token', type: 'auth_error' },
+        });
+      }
+    }
+
     const originalPath = req.params[0] || '';
     const cliTool = this.detectCliTool(`/${originalPath}`, {});
     const route = this.gatewayService.resolveRoute(cliTool);
@@ -562,6 +623,15 @@ export class GatewayController {
     }
 
     const { provider } = route;
+
+    // Use cached models if available
+    if (originalPath.endsWith('/models') || originalPath === 'models') {
+      const cached = store.getCachedModels(provider.id);
+      if (cached) {
+        return res.status(200).type('application/json').send(JSON.stringify({ object: 'list', data: cached.map(id => ({ id, object: 'model' })) }));
+      }
+    }
+
     const upstreamUrl = `${provider.baseUrl.replace(/\/+$/, '')}/${originalPath}`;
 
     console.log(`[Gateway Proxy GET] ${upstreamUrl}`);
@@ -575,7 +645,15 @@ export class GatewayController {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
       }
 
-      const response = await curlRequest(upstreamUrl, { headers, timeout: 30000 });
+      const response = await curlRequest(upstreamUrl, { headers, timeout: 30000, maxRetries: 1 });
+
+      // Cache models response
+      if (originalPath.endsWith('/models') || originalPath === 'models') {
+        try {
+          const modelsData = JSON.parse(response.body);
+          store.setCachedModels(provider.id, provider.id, modelsData.data?.map((m: any) => m.id) || []);
+        } catch { /* skip caching */ }
+      }
 
       return res
         .status(response.statusCode || 200)
@@ -589,7 +667,6 @@ export class GatewayController {
   }
 
   // ========== CLI Config Export ==========
-  // Returns the configuration that should be set in CLI tools
 
   @Get('config/:cliTool')
   getCliConfig(@Param('cliTool') cliTool: string) {
@@ -603,35 +680,45 @@ export class GatewayController {
       };
     }
 
-    const { provider, model } = route;
+    const { provider, route: routeConfig } = route;
+    const model = routeConfig.model;
     const proxyBaseUrl = `http://localhost:3000/api/gateway/proxy`;
+    const proxyToken = store.getProxyToken();
+    const authEnabled = store.isProxyAuthEnabled();
 
     const configs: Record<string, any> = {
       'claude-code': {
         description: 'Claude Code configuration',
         envVars: {
           ANTHROPIC_BASE_URL: `${proxyBaseUrl}`,
-          ANTHROPIC_API_KEY: 'gateway-proxy-key',
+          ANTHROPIC_API_KEY: authEnabled ? proxyToken : 'gateway-proxy-key',
         },
         configFile: `# ~/.claude/settings.json
 {
   "apiBaseUrl": "${proxyBaseUrl}",
-  "apiKey": "gateway-proxy-key"
+  "apiKey": "${authEnabled ? proxyToken : 'gateway-proxy-key'}"
 }`,
         note: 'Set environment variables or update Claude Code settings file',
       },
       'codex': {
         description: 'Codex configuration',
         configFile: `# ~/.codex/config.toml
-base_url = "${proxyBaseUrl}"
-wire_api = "responses"`,
+model = "${model}"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "${proxyBaseUrl}/v1"`,
+        envVars: authEnabled ? { OPENAI_API_KEY: proxyToken } : { OPENAI_API_KEY: 'anydoor-proxy' },
         note: 'Codex uses Responses API format. The gateway will auto-convert to Chat Completions.',
       },
       'cursor': {
         description: 'Cursor configuration',
         envVars: {
           OPENAI_BASE_URL: `${proxyBaseUrl}`,
-          OPENAI_API_KEY: 'gateway-proxy-key',
+          OPENAI_API_KEY: authEnabled ? proxyToken : 'gateway-proxy-key',
         },
         note: 'Set in Cursor Settings > Models > OpenAI API Base URL',
       },
@@ -702,7 +789,7 @@ wire_api = "responses"`,
     }
     // Default: try to match by model name
     if (body?.model) {
-      const routes = this.gatewayService.getRoutes();
+      const routes = this.gatewayService.getAllRoutes();
       const matchedRoute = routes.find(r => r.enabled);
       if (matchedRoute) return matchedRoute.cliTool;
     }

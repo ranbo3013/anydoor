@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { Provider, RouteConfig, ProxyLog, GatewayStatus, ApiFormat } from './gateway.types';
 
 // 优先使用 ANYDOOR_DATA_DIR 环境变量（Electron 设置为 ~/.anydoor/data）
@@ -8,6 +9,54 @@ const DATA_DIR = process.env.ANYDOOR_DATA_DIR || path.join(process.cwd(), 'gatew
 const PROVIDERS_FILE = path.join(DATA_DIR, 'providers.json');
 const ROUTES_FILE = path.join(DATA_DIR, 'routes.json');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.json');
+
+// Encryption key for API keys - derived from machine-specific info
+// In production, this should come from a secure source (e.g., system keychain)
+const ENCRYPTION_KEY = getEncryptionKey();
+const ENCRYPTION_PREFIX = 'enc:v1:';
+
+function getEncryptionKey(): string {
+  // Use a fixed key for now. In a real desktop app, this should use system keychain.
+  // The key is derived from a combination of hostname + username for some machine-specificity
+  const hostname = require('os').hostname() || 'anydoor';
+  const username = require('os').userInfo().username || 'user';
+  const raw = `anydoor-${hostname}-${username}-encryption-key`;
+  return crypto.createHash('sha256').update(raw).digest('hex').substring(0, 32);
+}
+
+function encryptApiKey(plaintext: string): string {
+  if (!plaintext || plaintext.startsWith(ENCRYPTION_PREFIX)) return plaintext;
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return `${ENCRYPTION_PREFIX}${iv.toString('hex')}:${encrypted}`;
+}
+
+function decryptApiKey(encrypted: string): string {
+  if (!encrypted || !encrypted.startsWith(ENCRYPTION_PREFIX)) return encrypted;
+  try {
+    const parts = encrypted.slice(ENCRYPTION_PREFIX.length).split(':');
+    if (parts.length !== 2) return encrypted; // Return as-is if format is wrong
+    const iv = Buffer.from(parts[0], 'hex');
+    const encryptedData = parts[1];
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    // If decryption fails, return as-is (might be an old unencrypted key)
+    return encrypted;
+  }
+}
+
+// Decrypt API keys in providers for use
+export function decryptProvider(provider: Provider): Provider {
+  return {
+    ...provider,
+    apiKey: decryptApiKey(provider.apiKey),
+  };
+}
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -36,7 +85,8 @@ function writeJsonFile<T>(filePath: string, data: T) {
 // ========== Provider CRUD ==========
 
 export function getProviders(): Provider[] {
-  return readJsonFile<Provider[]>(PROVIDERS_FILE, []);
+  // Return providers with decrypted API keys for internal use
+  return readJsonFile<Provider[]>(PROVIDERS_FILE, []).map(decryptProvider);
 }
 
 export function getProviderById(id: string): Provider | undefined {
@@ -44,29 +94,35 @@ export function getProviderById(id: string): Provider | undefined {
 }
 
 export function createProvider(data: Omit<Provider, 'id' | 'createdAt' | 'updatedAt'>): Provider {
-  const providers = getProviders();
+  const providers = readJsonFile<Provider[]>(PROVIDERS_FILE, []);
   const provider: Provider = {
     ...data,
+    apiKey: encryptApiKey(data.apiKey), // Encrypt before storing
     id: `provider_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
   providers.push(provider);
   writeJsonFile(PROVIDERS_FILE, providers);
-  return provider;
+  return decryptProvider(provider); // Return decrypted
 }
 
 export function updateProvider(id: string, data: Partial<Provider>): Provider | null {
-  const providers = getProviders();
+  const providers = readJsonFile<Provider[]>(PROVIDERS_FILE, []);
   const index = providers.findIndex(p => p.id === id);
   if (index === -1) return null;
-  providers[index] = { ...providers[index], ...data, updatedAt: new Date().toISOString() };
+  // Encrypt API key if it's being updated
+  const updateData = { ...data, updatedAt: new Date().toISOString() };
+  if (updateData.apiKey) {
+    updateData.apiKey = encryptApiKey(updateData.apiKey);
+  }
+  providers[index] = { ...providers[index], ...updateData };
   writeJsonFile(PROVIDERS_FILE, providers);
-  return providers[index];
+  return decryptProvider(providers[index]);
 }
 
 export function deleteProvider(id: string): boolean {
-  const providers = getProviders();
+  const providers = readJsonFile<Provider[]>(PROVIDERS_FILE, []);
   const filtered = providers.filter(p => p.id !== id);
   if (filtered.length === providers.length) return false;
   writeJsonFile(PROVIDERS_FILE, filtered);
@@ -116,7 +172,12 @@ export function deleteRoute(id: string): boolean {
 }
 
 export function replaceAllProviders(providers: Provider[]): void {
-  writeJsonFile(PROVIDERS_FILE, providers);
+  // Encrypt all API keys before saving
+  const encrypted = providers.map(p => ({
+    ...p,
+    apiKey: encryptApiKey(p.apiKey),
+  }));
+  writeJsonFile(PROVIDERS_FILE, encrypted);
 }
 
 export function replaceAllRoutes(routes: RouteConfig[]): void {
@@ -174,6 +235,115 @@ export function getGatewayStatus(proxyPort: number): GatewayStatus {
       connected: p.enabled,
     })),
   };
+}
+
+// ========== Model List Cache ==========
+
+interface CachedModels {
+  models: string[];
+  timestamp: number;
+  providerId: string;
+}
+
+const modelCache = new Map<string, CachedModels>();
+const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export function getCachedModels(cacheKey: string): string[] | null {
+  const cached = modelCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > MODEL_CACHE_TTL) {
+    modelCache.delete(cacheKey);
+    return null;
+  }
+  return cached.models;
+}
+
+export function setCachedModels(cacheKey: string, providerId: string, models: string[]): void {
+  modelCache.set(cacheKey, { models, timestamp: Date.now(), providerId });
+}
+
+// ========== Provider Health Status ==========
+
+interface ProviderHealth {
+  providerId: string;
+  healthy: boolean;
+  lastChecked: number;
+  latency?: number;
+  error?: string;
+}
+
+const healthCache = new Map<string, ProviderHealth>();
+const HEALTH_CHECK_TTL = 60 * 1000; // 1 minute
+
+export function getProviderHealth(providerId: string): ProviderHealth | null {
+  return healthCache.get(providerId) || null;
+}
+
+export function setProviderHealth(providerId: string, health: Omit<ProviderHealth, 'providerId'>): void {
+  healthCache.set(providerId, { ...health, providerId });
+}
+
+export function getAllProviderHealth(): ProviderHealth[] {
+  return Array.from(healthCache.values());
+}
+
+// ========== Gateway Auth Config ==========
+
+const PROXY_TOKEN_KEY = 'anydoor-proxy-token';
+
+function generateProxyToken(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+export function getProxyToken(): string {
+  const configFile = path.join(DATA_DIR, 'config.json');
+  try {
+    if (fs.existsSync(configFile)) {
+      const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+      if (config.proxyToken) return config.proxyToken;
+    }
+  } catch {}
+  // Generate and save a new token
+  const token = generateProxyToken();
+  saveConfig({ proxyToken: token });
+  return token;
+}
+
+export function isProxyAuthEnabled(): boolean {
+  const configFile = path.join(DATA_DIR, 'config.json');
+  try {
+    if (fs.existsSync(configFile)) {
+      const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+      return config.authEnabled === true;
+    }
+  } catch {}
+  return false;
+}
+
+export function setProxyAuthEnabled(enabled: boolean): void {
+  saveConfig({ authEnabled: enabled });
+}
+
+export function setProxyToken(token: string): void {
+  saveConfig({ proxyToken: token });
+}
+
+function saveConfig(partial: Record<string, any>): void {
+  const configFile = path.join(DATA_DIR, 'config.json');
+  let config: Record<string, any> = {};
+  try {
+    if (fs.existsSync(configFile)) {
+      config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+    }
+  } catch {}
+  Object.assign(config, partial);
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf-8');
+}
+
+export function isHealthCheckNeeded(providerId: string): boolean {
+  const health = healthCache.get(providerId);
+  if (!health) return true;
+  return Date.now() - health.lastChecked > HEALTH_CHECK_TTL;
 }
 
 // ========== Protocol Conversion Helpers ==========
@@ -258,7 +428,6 @@ export function responsesToChatCompletions(body: any): any {
 
   // Convert previous_response_id context (simplified - just carry forward)
   if (body.previous_response_id) {
-    // We can't truly map this to chat completions, but we log it
     console.log('[Gateway] previous_response_id present but not supported in chat completions format');
   }
 
@@ -422,9 +591,7 @@ export function anthropicResponseToResponses(response: any): any {
  * Determine the target API format based on provider type and original request format
  */
 export function getTargetFormat(providerType: ApiFormat, originalEndpoint: string): ApiFormat {
-  // If the provider is Anthropic, we need to convert to Anthropic format
   if (providerType === 'anthropic') return 'anthropic';
-  // Otherwise use chat completions format (works for openai_chat and as fallback for openai_responses)
   return 'openai_chat';
 }
 
@@ -435,7 +602,6 @@ export function buildUpstreamUrl(baseUrl: string, format: ApiFormat, originalEnd
   const base = baseUrl.replace(/\/+$/, '');
 
   if (format === 'anthropic') {
-    // Anthropic: /v1/messages
     if (base.endsWith('/v1') || base.includes('/v1/')) {
       return `${base}/messages`;
     }
@@ -444,7 +610,6 @@ export function buildUpstreamUrl(baseUrl: string, format: ApiFormat, originalEnd
 
   // OpenAI Chat Completions format
   if (originalEndpoint.includes('/responses') || originalEndpoint.includes('/chat/completions')) {
-    // Ensure /v1 is in the path
     if (base.endsWith('/v1') || base.includes('/v1/')) {
       return `${base}/chat/completions`;
     }
