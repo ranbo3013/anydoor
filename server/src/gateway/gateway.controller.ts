@@ -370,8 +370,8 @@ export class GatewayController {
             let eventData = '';
             for (const line of eventBlock.split('\n')) {
               const trimmed = line.trim();
-              if (trimmed.startsWith('data: ')) {
-                eventData = trimmed.slice(6).trim();
+              if (trimmed.startsWith('data:')) {
+                eventData = trimmed.slice(5).trim();
               }
             }
 
@@ -398,6 +398,14 @@ export class GatewayController {
 
             try {
               const parsed = JSON.parse(eventData);
+              const rawFinish = parsed.choices?.[0]?.finish_reason;
+              if (rawFinish) {
+                console.log(`[Gateway Proxy] ${ts()} RAW finish_reason="${rawFinish}" in chunk (hasCompleted=${hasCompleted})`);
+              }
+              const rawToolCalls = parsed.choices?.[0]?.delta?.tool_calls;
+              if (rawToolCalls) {
+                console.log(`[Gateway Proxy] ${ts()} RAW tool_calls in chunk: ${JSON.stringify(rawToolCalls).substring(0, 200)}`);
+              }
 
               if (needConvert) {
                 if (targetFormat === 'anthropic') {
