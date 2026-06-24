@@ -1,6 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
-// Browser-like headers to avoid Cloudflare blocking
 const BROWSER_HEADERS: Record<string, string> = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   'Accept': 'application/json, text/event-stream',
@@ -8,21 +10,9 @@ const BROWSER_HEADERS: Record<string, string> = {
   'Connection': 'keep-alive',
 };
 
-export interface CurlResponse {
-  statusCode: number;
-  headers: Record<string, string>;
-  body: string;
-}
-
-export interface CurlStreamCallbacks {
-  onChunk?: (rawData: string) => void;
-  onClose?: (code: number) => void;
-  onError?: (err: string) => void;
-}
-
 /**
- * Execute an HTTP request using curl subprocess
- * Supports retry on transient failures
+ * Execute a non-streaming HTTP request using curl subprocess
+ * Uses temp file for large request bodies to avoid stdin pipe issues
  */
 export async function curlRequest(
   url: string,
@@ -31,94 +21,54 @@ export async function curlRequest(
     headers?: Record<string, string>;
     body?: string;
     timeout?: number;
-    maxRetries?: number;
   } = {},
-): Promise<CurlResponse> {
-  const { maxRetries = 2, timeout = 30 } = options;
-  let lastError: Error | null = null;
+): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
+  const method = options.method || 'GET';
+  const timeout = options.timeout || 30000;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const result = await curlRequestOnce(url, options);
-      // Retry on 5xx or Cloudflare blocking
-      if (result.statusCode >= 500 && attempt < maxRetries) {
-        console.log(`[curl-fetch] Attempt ${attempt + 1} failed with ${result.statusCode}, retrying...`);
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // Exponential backoff
-        continue;
-      }
-      return result;
-    } catch (err: any) {
-      lastError = err;
-      if (attempt < maxRetries) {
-        console.log(`[curl-fetch] Attempt ${attempt + 1} error: ${err.message}, retrying...`);
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-      }
+  const args: string[] = [
+    '-s',                           // Silent mode
+    '-D', '-',                      // Dump headers to stdout
+    '-o', '-',                      // Output body to stdout
+    '-w', '\n__CURL_STATUS__%{http_code}', // Append status code
+    '--compressed',                 // Handle compressed responses
+    '--connect-timeout', '10',
+    '--max-time', String(Math.ceil(timeout / 1000)),
+    '-X', method,
+    '--tcp-nodelay',
+    '--http2',
+    '--keepalive-time', '60',
+  ];
+
+  // Add browser headers
+  for (const [key, value] of Object.entries(BROWSER_HEADERS)) {
+    args.push('-H', `${key}: ${value}`);
+  }
+
+  // Add custom headers
+  if (options.headers) {
+    for (const [key, value] of Object.entries(options.headers)) {
+      args.push('-H', `${key}: ${value}`);
     }
   }
 
-  throw lastError || new Error('Request failed after retries');
-}
+  // Write body to temp file for reliable transmission
+  let tmpFile: string | null = null;
+  if (options.body) {
+    const body = options.body.replace(/^\uFEFF/, '');
+    tmpFile = path.join(os.tmpdir(), `anydoor-req-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    fs.writeFileSync(tmpFile, body, 'utf-8');
+    args.push('--data-binary', `@${tmpFile}`);
+    console.log(`[curlRequest] Body written to temp file: ${tmpFile} (${body.length} chars, ${Buffer.byteLength(body, 'utf-8')} bytes)`);
+  }
 
-/**
- * Single curl request attempt (no retry)
- */
-async function curlRequestOnce(
-  url: string,
-  options: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
-    timeout?: number;
-  } = {},
-): Promise<CurlResponse> {
+  args.push(url);
+
+  console.log(`[curlRequest] Spawning curl for: ${url}`);
+  console.log(`[curlRequest] Method: ${method} | Body: ${options.body ? `${options.body.length} chars` : 'none'}`);
+
   return new Promise((resolve, reject) => {
-    const method = options.method || 'GET';
-    const timeout = options.timeout || 30;
-
-    const args: string[] = [
-      '-s',                           // Silent mode
-      '-D', '-',                      // Dump headers to stdout
-      '-o', '-',                      // Output body to stdout
-      '-w', '\n__CURL_STATUS__%{http_code}',  // Append status code
-      '--compressed',                 // Handle compressed responses
-      '--connect-timeout', '10',
-      '--max-time', String(timeout),
-      '-X', method,
-      '--tcp-nodelay',                // Disable Nagle for faster streaming
-      '--http2',                      // Use HTTP/2
-      '--keepalive-time', '60',       // Keep connection alive
-    ];
-
-    // Add browser headers
-    for (const [key, value] of Object.entries(BROWSER_HEADERS)) {
-      args.push('-H', `${key}: ${value}`);
-    }
-
-    // Add custom headers
-    if (options.headers) {
-      for (const [key, value] of Object.entries(options.headers)) {
-        args.push('-H', `${key}: ${value}`);
-      }
-    }
-
-    // Body via stdin
-    if (options.body) {
-      args.push('--data-binary', '@-');
-    }
-
-    args.push(url);
-
-    console.log(`[curlRequest] Spawning curl for: ${url}`);
-    console.log(`[curlRequest] Args: ${args.join(' ')}`);
-    if (options.body) {
-      console.log(`[curlRequest] Body length: ${options.body.length} chars`);
-      const bodyBuf = Buffer.from(options.body, 'utf-8');
-      console.log(`[curlRequest] Body HEX (first 30 bytes): ${bodyBuf.slice(0, 30).toString('hex')}`);
-      console.log(`[curlRequest] Body first 200 chars: ${options.body.substring(0, 200)}`);
-    }
-
     const proc = spawn('curl', args, { stdio: ['pipe', 'pipe', 'pipe'] });
-
     let stdout = '';
     let stderr = '';
 
@@ -130,62 +80,49 @@ async function curlRequestOnce(
       stderr += data.toString();
     });
 
-    if (options.body) {
-      const body = options.body.replace(/^\uFEFF/, '');
-      const CHUNK_SIZE = 65536;
-      let offset = 0;
-      const writeNext = () => {
-        while (offset < body.length) {
-          const chunk = body.substring(offset, offset + CHUNK_SIZE);
-          offset += chunk.length;
-          const canContinue = proc.stdin.write(chunk, 'utf-8');
-          if (!canContinue) {
-            proc.stdin.once('drain', writeNext);
-            return;
-          }
-        }
-        proc.stdin.end();
-      };
-      writeNext();
-    }
-
     proc.on('close', (code) => {
-      if (code !== 0 && !stdout.includes('__CURL_STATUS__')) {
-        reject(new Error(`curl exited with code ${code}: ${stderr}`));
-        return;
+      // Clean up temp file
+      if (tmpFile) {
+        try { fs.unlinkSync(tmpFile); } catch (_) {}
       }
 
-      // Parse status code from the trailer
+      if (stderr.trim()) {
+        console.log(`[curlRequest] stderr: ${stderr.trim().substring(0, 200)}`);
+      }
+
+      // Parse status code from the __CURL_STATUS__ marker
       const statusMatch = stdout.match(/__CURL_STATUS__(\d+)/);
       const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      stdout = stdout.replace(/__CURL_STATUS__\d+/, '');
+      stdout = stdout.replace(/__CURL_STATUS__\d+\n?$/, '');
 
-      // Parse headers and body (separated by \r\n\r\n)
-      const headerEndIndex = stdout.indexOf('\r\n\r\n');
-      const headers: Record<string, string> = {};
+      // Split headers and body
+      const headerEndIdx = stdout.indexOf('\r\n\r\n');
+      let headers: Record<string, string> = {};
+      let body = stdout;
 
-      if (headerEndIndex !== -1) {
-        const headerSection = stdout.substring(0, headerEndIndex);
-        const body = stdout.substring(headerEndIndex + 4);
+      if (headerEndIdx !== -1) {
+        const headerSection = stdout.substring(0, headerEndIdx);
+        body = stdout.substring(headerEndIdx + 4);
 
-        // Parse headers
-        for (const line of headerSection.split('\r\n')) {
-          const colonIndex = line.indexOf(':');
-          if (colonIndex !== -1) {
-            const key = line.substring(0, colonIndex).trim().toLowerCase();
-            const value = line.substring(colonIndex + 1).trim();
+        // Parse headers (may include 100-continue response, so take the last set)
+        const headerLines = headerSection.split('\r\n');
+        for (const line of headerLines) {
+          const colonIdx = line.indexOf(':');
+          if (colonIdx !== -1) {
+            const key = line.substring(0, colonIdx).trim().toLowerCase();
+            const value = line.substring(colonIdx + 1).trim();
             headers[key] = value;
           }
         }
-
-        resolve({ statusCode, headers, body });
-      } else {
-        // No headers found, treat everything as body
-        resolve({ statusCode, headers, body: stdout });
       }
+
+      resolve({ statusCode, headers, body });
     });
 
     proc.on('error', (err) => {
+      if (tmpFile) {
+        try { fs.unlinkSync(tmpFile); } catch (_) {}
+      }
       reject(err);
     });
   });
@@ -193,7 +130,7 @@ async function curlRequestOnce(
 
 /**
  * Execute a streaming HTTP request using curl subprocess
- * Supports retry on connection failure
+ * Uses temp file for large request bodies to avoid stdin pipe issues
  */
 export function curlStream(
   url: string,
@@ -232,13 +169,32 @@ export function curlStream(
     }
   }
 
-  // Body via stdin to avoid shell argument length limits
-  // Use --data-binary instead of -d to avoid any data processing (stripping \r\n)
+  // Write body to temp file for reliable transmission
+  // This avoids stdin pipe issues with large bodies (400KB+)
+  let tmpFile: string | null = null;
   if (options.body) {
-    args.push('--data-binary', '@-');
+    const body = options.body.replace(/^\uFEFF/, '');
+    tmpFile = path.join(os.tmpdir(), `anydoor-stream-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    fs.writeFileSync(tmpFile, body, 'utf-8');
+    args.push('--data-binary', `@${tmpFile}`);
+    console.log(`[curlStream] Body written to temp file: ${tmpFile} (${body.length} chars, ${Buffer.byteLength(body, 'utf-8')} bytes UTF-8)`);
+
+    // Register cleanup on process exit
+    const cleanup = () => {
+      if (tmpFile) {
+        try { fs.unlinkSync(tmpFile); } catch (_) {}
+        tmpFile = null;
+      }
+    };
+    process.on('exit', cleanup);
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
   }
 
   args.push(url);
+
+  console.log(`[curlStream] Spawning curl for: ${url}`);
+  console.log(`[curlStream] Method: ${method} | Body: ${options.body ? `${options.body.length} chars via temp file` : 'none'}`);
 
   const proc = spawn('curl', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
@@ -252,35 +208,22 @@ export function curlStream(
   });
 
   proc.on('close', (code) => {
+    // Clean up temp file
+    if (tmpFile) {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      tmpFile = null;
+    }
     callbacks.onClose?.(code || 0);
   });
 
-  // Write body via stdin with proper backpressure handling
-  if (options.body) {
-    // Remove BOM if present (can cause JSON parsing errors on upstream)
-    const body = options.body.replace(/^\uFEFF/, '');
-    // Write in chunks to handle backpressure on large bodies
-    const CHUNK_SIZE = 65536; // 64KB chunks
-    let offset = 0;
-    let totalWritten = 0;
-    const writeNext = () => {
-      while (offset < body.length) {
-        const chunk = body.substring(offset, offset + CHUNK_SIZE);
-        offset += chunk.length;
-        totalWritten += chunk.length;
-        const canContinue = proc.stdin.write(chunk, 'utf-8');
-        if (!canContinue) {
-          // Buffer full, wait for drain event before continuing
-          proc.stdin.once('drain', writeNext);
-          return;
-        }
-      }
-      // All data written, close stdin
-      console.log(`[curlStream] stdin write complete, written: ${totalWritten}, body length: ${body.length}`);
-      proc.stdin.end();
-    };
-    writeNext();
-  }
+  // No need to write to stdin - body is read from temp file
+  // This is much more reliable than stdin pipe for large bodies
 
   return proc;
+}
+
+export interface CurlStreamCallbacks {
+  onChunk?: (data: string) => void;
+  onError?: (error: string) => void;
+  onClose?: (code: number) => void;
 }

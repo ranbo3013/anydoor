@@ -711,7 +711,6 @@ export class GatewayController {
           headers,
           body: bodyStr,
           timeout: 60000,
-          maxRetries: 2,
         });
 
         if (response.statusCode >= 400) {
@@ -853,7 +852,7 @@ export class GatewayController {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
       }
 
-      const response = await curlRequest(upstreamUrl, { headers, timeout: 30000, maxRetries: 1 });
+      const response = await curlRequest(upstreamUrl, { headers, timeout: 30000 });
 
       // Cache models response
       if (originalPath.endsWith('/models') || originalPath === 'models') {
