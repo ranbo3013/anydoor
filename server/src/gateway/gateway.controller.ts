@@ -307,6 +307,11 @@ export class GatewayController {
 
     console.log(`[Gateway Proxy] ${ts()} Route: ${cliTool} -> ${provider.name} (${model}) | Format: ${targetFormat} | URL: ${upstreamUrl}`);
 
+    // Warn if Agnes is using openai_chat (should use openai_responses)
+    if (targetFormat === 'openai_chat' && (provider.name?.toLowerCase().includes('agnes') || model.toLowerCase().includes('agnes'))) {
+      console.log(`[Gateway Proxy] ${ts()} ⚠️  WARNING: Agnes provider is using 'openai_chat' format. Switching to 'openai_responses' format is recommended to avoid JSON parsing errors.`);
+    }
+
     // Convert request body based on protocol
     let upstreamBody: any;
 
