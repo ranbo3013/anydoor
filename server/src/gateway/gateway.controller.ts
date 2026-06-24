@@ -253,9 +253,19 @@ export class GatewayController {
   }
 
   @Post('test-agnes')
-  async testAgnes(@Body() body: { providerId: string; format: 'openai_chat' | 'openai_responses' }) {
-    const provider = store.getProviders().find(p => p.id === body.providerId);
-    if (!provider) return { code: 404, msg: 'Provider not found' };
+  async testAgnes(@Body() body: { providerId?: string; providerName?: string; format: 'openai_chat' | 'openai_responses' }) {
+    const providers = store.getProviders();
+    let provider = body.providerId 
+      ? providers.find(p => p.id === body.providerId)
+      : providers.find(p => p.name === body.providerName);
+
+    if (!provider) {
+      return { 
+        code: 404, 
+        msg: 'Provider not found', 
+        availableProviders: providers.map(p => ({ id: p.id, name: p.name, type: p.type })) 
+      };
+    }
 
     const format = body.format || provider.type || 'openai_chat';
     const baseUrl = provider.baseUrl.replace(/\/+$/, '');
