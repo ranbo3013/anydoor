@@ -252,6 +252,143 @@ export class GatewayController {
     return { code: 200, msg: 'success', data: store.getDistinctModels() };
   }
 
+  @Post('test-agnes-debug')
+  async testAgnesDebug(@Body() body: { providerId?: string; providerName?: string }) {
+    // Progressive diagnostic: read the last debug request body and test it
+    // with fields progressively removed to find which one triggers Agnes's bug
+    const providers = store.getProviders();
+    let provider = body.providerId
+      ? providers.find(p => p.id === body.providerId)
+      : providers.find(p => p.name === body.providerName);
+
+    if (!provider) {
+      return {
+        code: 404,
+        msg: 'Provider not found',
+        availableProviders: providers.map(p => ({ id: p.id, name: p.name, type: p.type })),
+      };
+    }
+
+    const baseUrl = provider.baseUrl.replace(/\/+$/, '');
+    const decrypted = store.decryptProvider(provider);
+    const endpoint = `${baseUrl}/v1/chat/completions`;
+    const debugBodyPath = path.join(os.tmpdir(), 'anydoor-debug-request.json');
+
+    if (!fs.existsSync(debugBodyPath)) {
+      return { code: 404, msg: 'No debug request file found. Trigger a Codex request first.' };
+    }
+
+    const rawBody = fs.readFileSync(debugBodyPath, 'utf-8');
+    let originalBody: any;
+    try {
+      originalBody = JSON.parse(rawBody);
+    } catch (e: any) {
+      return { code: 400, msg: `Debug file is not valid JSON: ${e.message}` };
+    }
+
+    const results: Array<{ label: string; statusCode: number; body: string; error?: string }> = [];
+
+    // Helper to test a variant
+    const testVariant = async (label: string, reqBody: any) => {
+      try {
+        const bodyStr = JSON.stringify(reqBody);
+        console.log(`[test-agnes-debug] Testing "${label}" (${bodyStr.length} chars)`);
+        const result = await curlRequest(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${decrypted.apiKey}`,
+          },
+          body: bodyStr,
+          timeout: 30,
+        });
+        const success = result.statusCode === 200;
+        results.push({
+          label,
+          statusCode: result.statusCode,
+          body: result.body.substring(0, 500),
+          error: success ? undefined : `HTTP ${result.statusCode}`,
+        });
+        console.log(`[test-agnes-debug] "${label}": ${result.statusCode} ${success ? '✅' : '❌'}`);
+        return success;
+      } catch (err: any) {
+        results.push({ label, statusCode: 0, body: '', error: err.message });
+        console.log(`[test-agnes-debug] "${label}": ERROR ${err.message}`);
+        return false;
+      }
+    };
+
+    // Variant 1: Full original request (as-is from debug file)
+    await testVariant('full-original', originalBody);
+
+    // Variant 2: Strip presence_penalty, frequency_penalty
+    const noPenalties = { ...originalBody };
+    delete noPenalties.presence_penalty;
+    delete noPenalties.frequency_penalty;
+    await testVariant('no-penalties', noPenalties);
+
+    // Variant 3: Strip tools
+    const noTools = { ...originalBody };
+    delete noTools.tools;
+    // Also remove tool_calls and tool messages from conversation
+    if (Array.isArray(noTools.messages)) {
+      const toolCallIds = new Set<string>();
+      noTools.messages = noTools.messages.filter((m: any) => {
+        if (m.role === 'assistant' && m.tool_calls) {
+          m.tool_calls.forEach((tc: any) => toolCallIds.add(tc.id));
+          return false; // remove assistant messages with tool_calls
+        }
+        if (m.role === 'tool') return false; // remove tool result messages
+        return true;
+      });
+    }
+    await testVariant('no-tools', noTools);
+
+    // Variant 4: Only model + messages + stream (minimal)
+    const minimal: any = {
+      model: originalBody.model,
+      messages: originalBody.messages,
+      stream: originalBody.stream ?? false,
+    };
+    await testVariant('minimal', minimal);
+
+    // Variant 5: Only model + last 2 messages + stream (tiny)
+    const tiny: any = {
+      model: originalBody.model,
+      messages: Array.isArray(originalBody.messages) ? originalBody.messages.slice(-2) : originalBody.messages,
+      stream: false,
+    };
+    await testVariant('tiny-last2-msgs', tiny);
+
+    // Variant 6: model + messages + stream + tools (no penalties, no stop)
+    const withToolsNoPenalties: any = {
+      model: originalBody.model,
+      messages: originalBody.messages,
+      stream: originalBody.stream ?? false,
+    };
+    if (originalBody.tools) withToolsNoPenalties.tools = originalBody.tools;
+    await testVariant('msg-tools-stream-only', withToolsNoPenalties);
+
+    // Find which variants succeeded
+    const successLabels = results.filter(r => r.statusCode === 200).map(r => r.label);
+    const failLabels = results.filter(r => r.statusCode !== 200).map(r => r.label);
+
+    return {
+      code: 200,
+      msg: 'success',
+      data: {
+        debugFileSize: rawBody.length,
+        debugFileMessages: Array.isArray(originalBody.messages) ? originalBody.messages.length : 0,
+        debugFileHasTools: !!originalBody.tools,
+        debugFileToolsCount: originalBody.tools?.length || 0,
+        debugFileHasPenalties: originalBody.presence_penalty !== undefined || originalBody.frequency_penalty !== undefined,
+        successVariants: successLabels,
+        failVariants: failLabels,
+        results,
+      },
+    };
+  }
+
   @Post('test-agnes')
   async testAgnes(@Body() body: { providerId?: string; providerName?: string; format: 'openai_chat' | 'openai_responses' }) {
     const providers = store.getProviders();
@@ -422,24 +559,30 @@ export class GatewayController {
     const isStream = upstreamBody.stream === true;
     const responseId = `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const bodyJsonStr = JSON.stringify(upstreamBody);
+
+    // JSON round-trip validation: ensure our output is valid JSON
+    try {
+      const parsed = JSON.parse(bodyJsonStr);
+      const reStringified = JSON.stringify(parsed);
+      if (reStringified !== bodyJsonStr) {
+        console.warn(`[Gateway Proxy] ${ts()} ⚠️ JSON round-trip mismatch! Original: ${bodyJsonStr.length} chars, Re-stringified: ${reStringified.length} chars`);
+      }
+    } catch (e: any) {
+      console.error(`[Gateway Proxy] ${ts()} ❌ CRITICAL: Our output JSON is INVALID: ${e.message}`);
+    }
+
     console.log(`[Gateway Proxy] ${ts()} === REQUEST DEBUG START ===`);
     console.log(`[Gateway Proxy] ${ts()} Target format: ${targetFormat}`);
     console.log(`[Gateway Proxy] ${ts()} Upstream URL: ${upstreamUrl}`);
     console.log(`[Gateway Proxy] ${ts()} Body size: ${bodyJsonStr.length} bytes | Stream: ${isStream}`);
-
-    // DEBUG: Hex dump of first 50 bytes
-    const bodyBuf = Buffer.from(bodyJsonStr, 'utf-8');
-    console.log(`[Gateway Proxy] ${ts()} HEX dump (first 50 bytes): ${bodyBuf.slice(0, 50).toString('hex')}`);
-    console.log(`[Gateway Proxy] ${ts()} Body first 500 chars: ${bodyJsonStr.substring(0, 500)}`);
+    console.log(`[Gateway Proxy] ${ts()} Messages count: ${upstreamBody.messages?.length || 0} | Tools count: ${upstreamBody.tools?.length || 0}`);
+    console.log(`[Gateway Proxy] ${ts()} Has presence_penalty: ${upstreamBody.presence_penalty !== undefined} | Has frequency_penalty: ${upstreamBody.frequency_penalty !== undefined}`);
 
     // DEBUG: Save request body to file for inspection
     const debugBodyPath = path.join(os.tmpdir(), 'anydoor-debug-request.json');
     fs.writeFileSync(debugBodyPath, bodyJsonStr, 'utf-8');
     console.log(`[Gateway Proxy] ${ts()} DEBUG body saved to: ${debugBodyPath}`);
     console.log(`[Gateway Proxy] ${ts()} === REQUEST DEBUG END ===`);
-    // Check for BOM or non-ASCII in first 10 bytes
-    const first10Bytes = Buffer.from(bodyJsonStr.substring(0, 10), 'utf-8');
-    console.log(`[Gateway Proxy] ${ts()} First 10 bytes hex: ${first10Bytes.toString('hex')} | as string: ${bodyJsonStr.substring(0, 10)}`);
 
     try {
       const headers: Record<string, string> = {
@@ -466,10 +609,7 @@ export class GatewayController {
       if (isStream) {
         // Use curl subprocess for streaming (bypasses Cloudflare TLS fingerprint)
         const bodyStr = JSON.stringify(upstreamBody);
-        console.log(`[Gateway Proxy] ${ts()} Request body first 300 chars: ${bodyStr.substring(0, 300)}`);
-        // Hex dump first 20 bytes for detecting BOM or hidden characters
-        const hexDump = Buffer.from(bodyStr.substring(0, 20)).toString('hex').match(/.{1,2}/g)?.join(' ');
-        console.log(`[Gateway Proxy] ${ts()} Body hex dump (first 20 bytes): ${hexDump}`);
+        console.log(`[Gateway Proxy] ${ts()} Sending streaming request (${bodyStr.length} chars)`);
         const curlProc = curlStream(upstreamUrl, {}, {
           method: 'POST',
           headers,
@@ -705,7 +845,6 @@ export class GatewayController {
         // Non-streaming: use curlRequest with retry
         console.log(`[Gateway Proxy] ${ts()} Non-streaming request via curl`);
         const bodyStr = JSON.stringify(upstreamBody);
-        console.log(`[Gateway Proxy] ${ts()} Request body first 300 chars: ${bodyStr.substring(0, 300)}`);
         const response = await curlRequest(upstreamUrl, {
           method: 'POST',
           headers,

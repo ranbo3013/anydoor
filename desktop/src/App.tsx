@@ -5,7 +5,7 @@ import {
   Power, PowerOff, RefreshCw, Download, Database,
   Terminal, Copy, CheckCircle2, XCircle, Clock,
   AlertTriangle, Info, ArrowRightLeft, Shield, Upload, RotateCcw, X,
-  ChartBar, TrendingUp, Coins, Calendar,
+  ChartBar, TrendingUp, Coins, Calendar, Bug,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -1311,6 +1311,109 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
   )
 }
 
+// ─── Agnes Debug Diagnostic ────────────────────────────
+function AgnesDebugDiagnostic() {
+  const [testing, setTesting] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState('')
+
+  const runDiagnostic = async () => {
+    setTesting(true)
+    setError('')
+    setResult(null)
+    try {
+      // Find Agnes provider
+      const providers: Provider[] = await API.get('/api/gateway/providers') || []
+      const agnesProvider = providers.find(p => p.name?.toLowerCase().includes('agnes'))
+      if (!agnesProvider) {
+        setError('未找到 Agnes 供应商，请先在「供应商」中配置 Agnes')
+        setTesting(false)
+        return
+      }
+
+      const data = await API.post('/api/gateway/test-agnes-debug', {
+        providerId: agnesProvider.id,
+      })
+      setResult(data)
+    } catch (err: any) {
+      setError(err.message || '诊断失败')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div>
+      <button onClick={runDiagnostic} disabled={testing}
+        className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-white bg-violet-500 hover:bg-violet-600 disabled:bg-gray-300 transition-colors">
+        {testing ? (
+          <>
+            <RefreshCw size={16} className="animate-spin" /> 正在测试（约需 30 秒）...
+          </>
+        ) : (
+          <>
+            <Bug size={16} /> 运行诊断测试
+          </>
+        )}
+      </button>
+
+      {error && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-4 space-y-3">
+          <div className="text-sm text-gray-600">
+            Debug 文件大小: <span className="font-mono">{(result.debugFileSize / 1024).toFixed(1)} KB</span> ·
+            消息数: <span className="font-mono">{result.debugFileMessages}</span> ·
+            有 Tools: <span className="font-mono">{result.debugFileHasTools ? `是 (${result.debugFileToolsCount} 个)` : '否'}</span> ·
+            有 Penalties: <span className="font-mono">{result.debugFileHasPenalties ? '是' : '否'}</span>
+          </div>
+
+          <div className="text-sm font-medium text-gray-900">测试结果：</div>
+          <div className="space-y-2">
+            {result.results?.map((r: any, i: number) => (
+              <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${r.statusCode === 200 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                {r.statusCode === 200 ? (
+                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                ) : (
+                  <XCircle size={16} className="text-red-600 shrink-0" />
+                )}
+                <span className="font-mono text-gray-700">{r.label}</span>
+                <span className={`ml-auto font-mono ${r.statusCode === 200 ? 'text-green-700' : 'text-red-700'}`}>
+                  HTTP {r.statusCode}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {result.successVariants?.length > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+              ✅ 成功的变体: <span className="font-mono">{result.successVariants.join(', ')}</span>
+            </div>
+          )}
+
+          {result.failVariants?.length > 0 && result.successVariants?.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+              ⚠️ 所有变体都失败了。可能是 Agnes 服务端问题或 debug 文件已过期。
+            </div>
+          )}
+
+          {result.successVariants?.length > 0 && result.failVariants?.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              💡 结论: 移除某些字段后成功，说明这些字段触发了 Agnes 的 bug。<br/>
+              成功: <span className="font-mono">{result.successVariants.join(', ')}</span><br/>
+              失败: <span className="font-mono">{result.failVariants.join(', ')}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Settings ────────────────────────────────────────────
 function SettingsPage() {
   const [gatewayInfo, setGatewayInfo] = useState<{ port: number; host: string; uptime: number } | null>(null)
@@ -1500,6 +1603,18 @@ function SettingsPage() {
             <RotateCcw size={16} /> 重置所有配置
           </button>
         </div>
+      </div>
+
+      {/* Agnes Debug Diagnostic */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Bug size={18} className="text-gray-400" /> Agnes 诊断测试
+        </h2>
+        <p className="text-xs text-gray-500 mb-4">
+          用最近一次失败的请求体，逐步移除字段来测试 Agnes，定位 JSON 解析错误的触发原因。
+          请先触发一次 Codex 请求（会失败但会保存 debug 文件），然后点击诊断。
+        </p>
+        <AgnesDebugDiagnostic />
       </div>
 
       {/* About */}

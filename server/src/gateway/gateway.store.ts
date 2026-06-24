@@ -662,13 +662,11 @@ export function responsesToChatCompletions(body: any): any {
   if (body.temperature !== undefined) result.temperature = body.temperature;
   if (body.top_p !== undefined) result.top_p = body.top_p;
   if (body.max_output_tokens !== undefined) result.max_tokens = body.max_output_tokens;
+  // Anti-repetition: only apply if caller explicitly set them, do NOT add defaults
+  // (Auto-added defaults were causing Agnes/vLLM JSON parse errors on large requests)
   if (body.presence_penalty !== undefined) result.presence_penalty = body.presence_penalty;
   if (body.frequency_penalty !== undefined) result.frequency_penalty = body.frequency_penalty;
   if (body.stop) result.stop = body.stop;
-
-  // Anti-repetition defaults: apply if not explicitly set by the caller
-  if (result.presence_penalty === undefined) result.presence_penalty = 0.1;
-  if (result.frequency_penalty === undefined) result.frequency_penalty = 0.1;
 
   // Convert tools
   if (body.tools && body.tools.length > 0) {
