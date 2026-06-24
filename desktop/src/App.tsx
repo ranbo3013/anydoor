@@ -956,6 +956,18 @@ function UsageStatsPage() {
         </div>
       </div>
 
+      {/* Empty state when no data */}
+      {stats && stats.totalRequests === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="text-4xl mb-3">📊</div>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">暂无使用数据</h3>
+          <p className="text-sm text-gray-400 max-w-md mx-auto">
+            当有 AI 请求通过网关时，使用统计将自动显示在此处。<br />
+            请确认已在「供应商」中配置 API 并在「路由」中设置模型映射。
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -1136,6 +1148,8 @@ function UsageStatsPage() {
             </table>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )
