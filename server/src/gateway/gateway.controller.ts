@@ -448,14 +448,30 @@ export class GatewayController {
 
             // Parse each line in the event block
             let eventData = '';
+            let eventType = '';
             for (const line of eventBlock.split('\n')) {
               const trimmed = line.trim();
               if (trimmed.startsWith('data:')) {
                 eventData = trimmed.slice(5).trim();
+              } else if (trimmed.startsWith('event:')) {
+                eventType = trimmed.slice(6).trim();
               }
             }
 
             if (!eventData) continue;
+
+            // For openai_responses passthrough, forward the raw SSE event block
+            // preserving both event: and data: lines
+            if (!needConvert) {
+              if (eventType) {
+                writeSse(`event: ${eventType}\ndata: ${eventData}\n\n`);
+                if (eventType === 'response.completed') hasCompleted = true;
+              } else {
+                // No event: line, forward as data-only SSE
+                writeSse(`data: ${eventData}\n\n`);
+              }
+              continue;
+            }
 
             if (eventData === '[DONE]') {
               console.log(`[Gateway Proxy] ${ts()} Received [DONE] from upstream, hasCompleted=${hasCompleted}`);
@@ -468,11 +484,7 @@ export class GatewayController {
                   writeSse(formatSseEvent(event));
                 }
               }
-              // Only forward [DONE] for non-converted streams (Chat Completions passthrough)
-              // Codex Responses API does not expect [DONE]
-              if (!needConvert) {
-                writeSse('data: [DONE]\n\n');
-              }
+              // Don't forward [DONE] to Codex - Responses API expects response.completed event
               continue;
             }
 
@@ -505,8 +517,10 @@ export class GatewayController {
                   }
                 }
               } else {
-                writeSse(`data: ${JSON.stringify(parsed)}\n\n`);
-              }
+                    // openai_responses passthrough - already handled above in the needConvert=false block
+                    // This branch should not be reached, but just in case
+                    writeSse(`data: ${JSON.stringify(parsed)}\n\n`);
+                  }
             } catch {
               // Skip unparseable chunks
             }
@@ -555,15 +569,27 @@ export class GatewayController {
             }
           }
           // Ensure response.completed is sent even if stream ended abruptly
-          if (needConvert && !hasCompleted) {
-            const contentStr = typeof (streamState as any).collectedContent === 'string' ? (streamState as any).collectedContent.substring(0, 100) : JSON.stringify((streamState as any).collectedContent)?.substring(0, 100);
-            console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed, collectedContent: "${contentStr}"`);
-            console.log(`[Gateway Proxy] ${ts()} sseBuffer remaining (${sseBuffer.length} bytes): ${sseBuffer.substring(0, 300)}`);
-            const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
-            const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
-            for (const event of fallbackEvents) {
-              console.log(`[Gateway Proxy] ${ts()} FALLBACK event: ${event.eventType}`);
-              writeSse(formatSseEvent(event));
+          if (!hasCompleted) {
+            if (!needConvert) {
+              // For openai_responses passthrough, send a synthetic response.completed
+              console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed for openai_responses passthrough`);
+              const fallbackCompleted = {
+                type: 'response.completed',
+                id: responseId,
+                object: 'response.completed',
+                response: { id: responseId, object: 'response', status: 'completed', output: [] }
+              };
+              writeSse(`event: response.completed\ndata: ${JSON.stringify(fallbackCompleted)}\n\n`);
+            } else {
+              const contentStr = typeof (streamState as any).collectedContent === 'string' ? (streamState as any).collectedContent.substring(0, 100) : JSON.stringify((streamState as any).collectedContent)?.substring(0, 100);
+              console.log(`[Gateway Proxy] ${ts()} SENDING FALLBACK response.completed, collectedContent: "${contentStr}"`);
+              console.log(`[Gateway Proxy] ${ts()} sseBuffer remaining (${sseBuffer.length} bytes): ${sseBuffer.substring(0, 300)}`);
+              const syntheticStop = { choices: [{ finish_reason: 'stop', delta: {} }], usage: null };
+              const fallbackEvents = processChatChunk(syntheticStop, responseId, model, streamState);
+              for (const event of fallbackEvents) {
+                console.log(`[Gateway Proxy] ${ts()} FALLBACK event: ${event.eventType}`);
+                writeSse(formatSseEvent(event));
+              }
             }
           }
           console.log(`[Gateway Proxy] ${ts()} Stream completed`);
