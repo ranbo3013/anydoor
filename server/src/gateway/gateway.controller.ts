@@ -300,7 +300,7 @@ export class GatewayController {
             'Authorization': `Bearer ${decrypted.apiKey}`,
           },
           body: bodyStr,
-          timeout: 30,
+          timeout: 60000,
         });
         const success = result.statusCode === 200;
         results.push({
@@ -437,7 +437,7 @@ export class GatewayController {
           'Authorization': `Bearer ${decrypted.apiKey}`,
         },
         body: JSON.stringify(testBody),
-        timeout: 30,
+        timeout: 30000,
       });
 
       console.log(`[testAgnes] Response status: ${result.statusCode}`);
@@ -614,7 +614,7 @@ export class GatewayController {
           method: 'POST',
           headers,
           body: bodyStr,
-          timeout: 120,
+          timeout: 120000,
         });
         console.log(`[Gateway Proxy] ${ts()} curl subprocess started`);
 
