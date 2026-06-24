@@ -853,6 +853,7 @@ export function anthropicResponseToResponses(response: any): any {
  */
 export function getTargetFormat(providerType: ApiFormat, originalEndpoint: string): ApiFormat {
   if (providerType === 'anthropic') return 'anthropic';
+  if (providerType === 'openai_responses') return 'openai_responses';
   return 'openai_chat';
 }
 
@@ -867,6 +868,14 @@ export function buildUpstreamUrl(baseUrl: string, format: ApiFormat, originalEnd
       return `${base}/messages`;
     }
     return `${base}/v1/messages`;
+  }
+
+  if (format === 'openai_responses') {
+    // Responses API: pass through original endpoint
+    if (base.endsWith('/v1') || base.includes('/v1/')) {
+      return `${base}${originalEndpoint.replace('/v1', '')}`;
+    }
+    return `${base}${originalEndpoint}`;
   }
 
   // OpenAI Chat Completions format

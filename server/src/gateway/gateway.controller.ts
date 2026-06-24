@@ -314,6 +314,10 @@ export class GatewayController {
           : req.body,
         model,
       );
+    } else if (targetFormat === 'openai_responses') {
+      // Responses API passthrough - no conversion needed
+      upstreamBody = { ...req.body, model };
+      console.log('[Gateway Proxy] Responses API passthrough (no conversion)');
     } else {
       // openai_chat format
       if (originalEndpoint.includes('/responses')) {
@@ -366,6 +370,9 @@ export class GatewayController {
         // Use curl subprocess for streaming (bypasses Cloudflare TLS fingerprint)
         const bodyStr = JSON.stringify(upstreamBody);
         console.log(`[Gateway Proxy] ${ts()} Request body first 300 chars: ${bodyStr.substring(0, 300)}`);
+        // Hex dump first 20 bytes for detecting BOM or hidden characters
+        const hexDump = Buffer.from(bodyStr.substring(0, 20)).toString('hex').match(/.{1,2}/g)?.join(' ');
+        console.log(`[Gateway Proxy] ${ts()} Body hex dump (first 20 bytes): ${hexDump}`);
         const curlProc = curlStream(upstreamUrl, {}, {
           method: 'POST',
           headers,
@@ -380,7 +387,7 @@ export class GatewayController {
         res.setHeader('Connection', 'keep-alive');
         res.setHeader('X-Accel-Buffering', 'no');
 
-        const needConvert = originalEndpoint.includes('/responses');
+        const needConvert = originalEndpoint.includes('/responses') && targetFormat !== 'openai_responses';
 
         // State for tracking conversion progress
         const streamState = createStreamState();

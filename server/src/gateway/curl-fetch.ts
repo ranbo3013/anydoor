@@ -210,8 +210,9 @@ export function curlStream(
   }
 
   // Body via stdin to avoid shell argument length limits
+  // Use --data-binary instead of -d to avoid any data processing (stripping \r\n)
   if (options.body) {
-    args.push('-d', '@-');
+    args.push('--data-binary', '@-');
   }
 
   args.push(url);
