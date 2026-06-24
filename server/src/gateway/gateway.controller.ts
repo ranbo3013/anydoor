@@ -251,7 +251,68 @@ export class GatewayController {
   getDistinctModels() {
     return { code: 200, msg: 'success', data: store.getDistinctModels() };
   }
-  // It intercepts requests, resolves routes, converts protocols, and forwards.
+
+  @Post('test-agnes')
+  async testAgnes(@Body() body: { providerId: string; format: 'openai_chat' | 'openai_responses' }) {
+    const provider = store.getProviders().find(p => p.id === body.providerId);
+    if (!provider) return { code: 404, msg: 'Provider not found' };
+
+    const format = body.format || provider.type || 'openai_chat';
+    const baseUrl = provider.baseUrl.replace(/\/+$/, '');
+    const decrypted = store.decryptProvider(provider);
+
+    let testBody: any;
+    let endpoint: string;
+    if (format === 'openai_responses') {
+      endpoint = `${baseUrl}/v1/responses`;
+      testBody = {
+        model: provider.models?.[0] || 'agnes-2.0-flash',
+        input: 'Say hello',
+        stream: false,
+      };
+    } else {
+      endpoint = `${baseUrl}/v1/chat/completions`;
+      testBody = {
+        model: provider.models?.[0] || 'agnes-2.0-flash',
+        messages: [{ role: 'user', content: 'Say hello' }],
+        stream: false,
+      };
+    }
+
+    console.log(`[testAgnes] Testing ${format} format -> ${endpoint}`);
+    console.log(`[testAgnes] Body: ${JSON.stringify(testBody)}`);
+
+    try {
+      const result = await curlRequest(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${decrypted.apiKey}`,
+        },
+        body: JSON.stringify(testBody),
+        timeout: 30,
+      });
+
+      console.log(`[testAgnes] Response status: ${result.statusCode}`);
+      console.log(`[testAgnes] Response body (first 500): ${result.body.substring(0, 500)}`);
+
+      return {
+        code: 200,
+        msg: 'success',
+        data: {
+          format,
+          endpoint,
+          statusCode: result.statusCode,
+          body: result.body.substring(0, 2000),
+        },
+      };
+    } catch (err: any) {
+      console.error(`[testAgnes] Error: ${err.message}`);
+      return { code: 500, msg: err.message };
+    }
+  }
+
+  // Gateway Proxy: intercepts requests, resolves routes, converts protocols, and forwards.
 
   @Post('proxy/*')
   async proxyRequest(@Req() req: Request, @Res() res: Response) {

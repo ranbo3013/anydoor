@@ -132,13 +132,12 @@ async function curlRequestOnce(
 
     if (options.body) {
       const body = options.body.replace(/^\uFEFF/, '');
-      // Write in chunks to handle backpressure on large bodies
       const CHUNK_SIZE = 65536;
       let offset = 0;
       const writeNext = () => {
         while (offset < body.length) {
           const chunk = body.substring(offset, offset + CHUNK_SIZE);
-          offset += CHUNK_SIZE;
+          offset += chunk.length;
           const canContinue = proc.stdin.write(chunk, 'utf-8');
           if (!canContinue) {
             proc.stdin.once('drain', writeNext);
@@ -263,10 +262,12 @@ export function curlStream(
     // Write in chunks to handle backpressure on large bodies
     const CHUNK_SIZE = 65536; // 64KB chunks
     let offset = 0;
+    let totalWritten = 0;
     const writeNext = () => {
       while (offset < body.length) {
         const chunk = body.substring(offset, offset + CHUNK_SIZE);
-        offset += CHUNK_SIZE;
+        offset += chunk.length;
+        totalWritten += chunk.length;
         const canContinue = proc.stdin.write(chunk, 'utf-8');
         if (!canContinue) {
           // Buffer full, wait for drain event before continuing
@@ -275,7 +276,7 @@ export function curlStream(
         }
       }
       // All data written, close stdin
-      console.log(`[curlStream] stdin write complete, total offset: ${offset}, body length: ${options.body?.length}`);
+      console.log(`[curlStream] stdin write complete, written: ${totalWritten}, body length: ${body.length}`);
       proc.stdin.end();
     };
     writeNext();
