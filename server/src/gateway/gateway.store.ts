@@ -532,12 +532,73 @@ export function isHealthCheckNeeded(providerId: string): boolean {
 // Agnes/vLLM re-serializes request bodies and truncates large ones,
 // producing broken JSON ("Expecting property name enclosed in double quotes").
 // Truncating tool output content prevents this.
-const MAX_TOOL_CONTENT_LENGTH = 8000;
+const MAX_TOOL_CONTENT_LENGTH = 4000;
+const MAX_TOTAL_BODY_BYTES = 180 * 1024; // 180KB - Agnes starts corrupting above ~200KB
 const TRUNCATION_SUFFIX = '\n...[truncated by AnyDoor gateway]';
 
-function truncateToolContent(content: string): string {
-  if (content.length <= MAX_TOOL_CONTENT_LENGTH) return content;
-  return content.substring(0, MAX_TOOL_CONTENT_LENGTH) + TRUNCATION_SUFFIX;
+function truncateToolContent(content: string, maxLen: number = MAX_TOOL_CONTENT_LENGTH): string {
+  if (content.length <= maxLen) return content;
+  return content.substring(0, maxLen) + TRUNCATION_SUFFIX;
+}
+
+/**
+ * Ensure the total request body size stays under the Agnes-safe limit.
+ * If JSON.stringify(result) exceeds MAX_TOTAL_BODY_BYTES, progressively
+ * truncate tool message content until it fits.
+ */
+function enforceBodySizeLimit(result: any): void {
+  let jsonStr = JSON.stringify(result);
+  if (Buffer.byteLength(jsonStr, 'utf-8') <= MAX_TOTAL_BODY_BYTES) return;
+
+  console.log(`[Gateway] Body size ${Buffer.byteLength(jsonStr, 'utf-8')} bytes exceeds limit ${MAX_TOTAL_BODY_BYTES}, truncating tool content...`);
+
+  // Progressive truncation: keep reducing max content length until body fits
+  let maxLen = MAX_TOOL_CONTENT_LENGTH;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    maxLen = Math.max(200, Math.floor(maxLen / 2));
+
+    for (const msg of result.messages || []) {
+      // Truncate tool result content
+      if (msg.role === 'tool' && typeof msg.content === 'string') {
+        msg.content = truncateToolContent(msg.content, maxLen);
+      }
+      // Truncate tool_call arguments
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          if (tc.function?.arguments && typeof tc.function.arguments === 'string') {
+            tc.function.arguments = truncateToolContent(tc.function.arguments, maxLen);
+          }
+        }
+      }
+    }
+
+    jsonStr = JSON.stringify(result);
+    const bodySize = Buffer.byteLength(jsonStr, 'utf-8');
+    console.log(`[Gateway] Truncation attempt ${attempt + 1}: maxLen=${maxLen}, body=${bodySize} bytes`);
+
+    if (bodySize <= MAX_TOTAL_BODY_BYTES) break;
+  }
+
+  // Final check: if still too large, strip tool messages entirely from the middle
+  const finalSize = Buffer.byteLength(JSON.stringify(result), 'utf-8');
+  if (finalSize > MAX_TOTAL_BODY_BYTES) {
+    console.log(`[Gateway] Body still ${finalSize} bytes after truncation, removing middle tool messages...`);
+    const msgs = result.messages || [];
+    const toolMsgIndices = [];
+    for (let i = 0; i < msgs.length; i++) {
+      if (msgs[i].role === 'tool' || (msgs[i].role === 'assistant' && msgs[i].tool_calls)) {
+        toolMsgIndices.push(i);
+      }
+    }
+    // Remove from the middle of tool messages, keep first and last few
+    if (toolMsgIndices.length > 4) {
+      const keepFirst = 2;
+      const keepLast = 2;
+      const removeSet = new Set(toolMsgIndices.slice(keepFirst, -keepLast));
+      result.messages = msgs.filter((_: any, i: number) => !removeSet.has(i));
+      console.log(`[Gateway] Removed ${removeSet.size} middle tool messages`);
+    }
+  }
 }
 
 export function responsesToChatCompletions(body: any): any {
@@ -701,6 +762,9 @@ export function responsesToChatCompletions(body: any): any {
   if (body.previous_response_id) {
     console.log('[Gateway] previous_response_id present but not supported in chat completions format');
   }
+
+  // Enforce total body size limit to prevent Agnes/vLLM JSON corruption
+  enforceBodySizeLimit(result);
 
   return result;
 }
