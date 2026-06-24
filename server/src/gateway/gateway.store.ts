@@ -593,7 +593,7 @@ export function responsesToChatCompletions(body: any): any {
           content = item.content;
         }
 
-        messages.push({ role, content });
+        messages.push({ role, content: content ?? '' });
       } else if (item.type === 'function_call') {
         // Accumulate consecutive function_calls into pending array.
         // They'll be flushed into a single assistant(tool_calls) message

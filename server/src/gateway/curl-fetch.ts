@@ -231,9 +231,11 @@ export function curlStream(
     callbacks.onClose?.(code || 0);
   });
 
-  // Write body via stdin
+  // Write body via stdin (explicitly use UTF-8 encoding)
   if (options.body) {
-    proc.stdin.write(options.body);
+    // Remove BOM if present (can cause JSON parsing errors on upstream)
+    const body = options.body.replace(/^\uFEFF/, '');
+    proc.stdin.write(body, 'utf-8');
     proc.stdin.end();
   }
 

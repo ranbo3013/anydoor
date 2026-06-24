@@ -364,10 +364,12 @@ export class GatewayController {
 
       if (isStream) {
         // Use curl subprocess for streaming (bypasses Cloudflare TLS fingerprint)
+        const bodyStr = JSON.stringify(upstreamBody);
+        console.log(`[Gateway Proxy] ${ts()} Request body first 300 chars: ${bodyStr.substring(0, 300)}`);
         const curlProc = curlStream(upstreamUrl, {}, {
           method: 'POST',
           headers,
-          body: JSON.stringify(upstreamBody),
+          body: bodyStr,
           timeout: 120,
         });
         console.log(`[Gateway Proxy] ${ts()} curl subprocess started`);
@@ -572,10 +574,12 @@ export class GatewayController {
       } else {
         // Non-streaming: use curlRequest with retry
         console.log(`[Gateway Proxy] ${ts()} Non-streaming request via curl`);
+        const bodyStr = JSON.stringify(upstreamBody);
+        console.log(`[Gateway Proxy] ${ts()} Request body first 300 chars: ${bodyStr.substring(0, 300)}`);
         const response = await curlRequest(upstreamUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify(upstreamBody),
+          body: bodyStr,
           timeout: 60000,
           maxRetries: 2,
         });
