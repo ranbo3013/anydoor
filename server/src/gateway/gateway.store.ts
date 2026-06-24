@@ -528,6 +528,18 @@ export function isHealthCheckNeeded(providerId: string): boolean {
 /**
  * Convert OpenAI Responses API format to Chat Completions format
  */
+// Max content length for tool messages (characters).
+// Agnes/vLLM re-serializes request bodies and truncates large ones,
+// producing broken JSON ("Expecting property name enclosed in double quotes").
+// Truncating tool output content prevents this.
+const MAX_TOOL_CONTENT_LENGTH = 8000;
+const TRUNCATION_SUFFIX = '\n...[truncated by AnyDoor gateway]';
+
+function truncateToolContent(content: string): string {
+  if (content.length <= MAX_TOOL_CONTENT_LENGTH) return content;
+  return content.substring(0, MAX_TOOL_CONTENT_LENGTH) + TRUNCATION_SUFFIX;
+}
+
 export function responsesToChatCompletions(body: any): any {
   const messages: any[] = [];
 
@@ -556,7 +568,7 @@ export function responsesToChatCompletions(body: any): any {
             type: 'function',
             function: {
               name: fc.name,
-              arguments: typeof fc.arguments === 'string' ? fc.arguments : JSON.stringify(fc.arguments),
+              arguments: truncateToolContent(typeof fc.arguments === 'string' ? fc.arguments : JSON.stringify(fc.arguments)),
             },
           })),
         });
@@ -626,7 +638,7 @@ export function responsesToChatCompletions(body: any): any {
         messages.push({
           role: 'tool',
           tool_call_id: item.call_id,
-          content: typeof item.output === 'string' ? item.output : JSON.stringify(item.output),
+          content: truncateToolContent(typeof item.output === 'string' ? item.output : JSON.stringify(item.output)),
         });
       }
     }
