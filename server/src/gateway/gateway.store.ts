@@ -584,7 +584,7 @@ function enforceBodySizeLimit(result: any): void {
   if (finalSize > MAX_TOTAL_BODY_BYTES) {
     console.log(`[Gateway] Body still ${finalSize} bytes after truncation, removing middle tool messages...`);
     const msgs = result.messages || [];
-    const toolMsgIndices = [];
+    const toolMsgIndices: number[] = [];
     for (let i = 0; i < msgs.length; i++) {
       if (msgs[i].role === 'tool' || (msgs[i].role === 'assistant' && msgs[i].tool_calls)) {
         toolMsgIndices.push(i);
