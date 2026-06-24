@@ -789,8 +789,10 @@ function UsageStatsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [quickRange, setQuickRange] = useState('7d')
+  const [statsLoading, setStatsLoading] = useState(false)
 
   const loadStats = useCallback(async () => {
+    setStatsLoading(true)
     try {
       const params = new URLSearchParams()
       if (selectedProvider !== 'all') params.set('provider', selectedProvider)
@@ -800,6 +802,7 @@ function UsageStatsPage() {
       const data = await API.get<UsageStats>(`/api/gateway/stats/usage?${params.toString()}`)
       setStats(data)
     } catch (e) { console.error('Failed to load stats', e) }
+    finally { setStatsLoading(false) }
   }, [selectedProvider, selectedModel, startDate, endDate])
 
   const loadFilters = useCallback(async () => {
@@ -873,9 +876,10 @@ function UsageStatsPage() {
         </div>
         <button
           onClick={loadStats}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          disabled={statsLoading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} /> 刷新
+          <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} /> {statsLoading ? '加载中...' : '刷新'}
         </button>
       </div>
 
@@ -1140,12 +1144,15 @@ function UsageStatsPage() {
 function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<React.SetStateAction<ProxyLog[]>> }) {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
+  const [logsLoading, setLogsLoading] = useState(false)
 
   const loadLogs = useCallback(async () => {
+    setLogsLoading(true)
     try {
       const data = await API.get<ProxyLog[]>('/api/gateway/logs')
       setLogs(data || [])
     } catch { /* ignore */ }
+    finally { setLogsLoading(false) }
   }, [setLogs])
 
   useEffect(() => {
@@ -1180,9 +1187,9 @@ function Logs({ logs, setLogs }: { logs: ProxyLog[]; setLogs: React.Dispatch<Rea
           <p className="text-sm text-gray-500 mt-1">共 {logs.length} 条记录，按时间倒序排列</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={loadLogs}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 border border-gray-200">
-            <RefreshCw size={14} /> 刷新
+          <button onClick={loadLogs} disabled={logsLoading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 border border-gray-200 disabled:opacity-50">
+            <RefreshCw size={14} className={logsLoading ? 'animate-spin' : ''} /> {logsLoading ? '加载中...' : '刷新'}
           </button>
           <button onClick={() => setAutoRefresh(!autoRefresh)}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
