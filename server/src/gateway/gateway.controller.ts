@@ -600,7 +600,9 @@ export class GatewayController {
     } else if (targetFormat === 'openai_responses') {
       // Responses API passthrough - no conversion needed
       upstreamBody = { ...req.body, model };
-      console.log('[Gateway Proxy] Responses API passthrough (no conversion)');
+      // Still sanitize control characters to prevent Agnes/vLLM parse errors
+      upstreamBody = store.sanitizeRequestBody(upstreamBody);
+      console.log('[Gateway Proxy] Responses API passthrough (sanitized control chars)');
     } else {
       // openai_chat format
       if (originalEndpoint.includes('/responses')) {
@@ -618,7 +620,8 @@ export class GatewayController {
           return { role: m.role, content_length: typeof m.content === 'string' ? m.content.length : 'array' };
         }));
       } else {
-        upstreamBody = req.body;
+        // Already Chat Completions format, just sanitize control chars
+        upstreamBody = store.sanitizeRequestBody(req.body);
       }
       upstreamBody.model = model;
     }

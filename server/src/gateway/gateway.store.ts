@@ -536,9 +536,21 @@ const MAX_TOOL_CONTENT_LENGTH = 4000;
 const MAX_TOTAL_BODY_BYTES = 180 * 1024; // 180KB - Agnes starts corrupting above ~200KB
 const TRUNCATION_SUFFIX = '\n...[truncated by AnyDoor gateway]';
 
+/**
+ * Strip control characters from a string that could break JSON parsing
+ * when Agnes re-serializes the request body.
+ * Keeps \n (0x0A), \r (0x0D), \t (0x09) which are commonly used.
+ * Removes \x00-\x08, \x0B, \x0C, \x0E-\x1F, \x7F.
+ */
+function sanitizeControlChars(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
 function truncateToolContent(content: string, maxLen: number = MAX_TOOL_CONTENT_LENGTH): string {
-  if (content.length <= maxLen) return content;
-  return content.substring(0, maxLen) + TRUNCATION_SUFFIX;
+  let c = sanitizeControlChars(content);
+  if (c.length <= maxLen) return c;
+  return c.substring(0, maxLen) + TRUNCATION_SUFFIX;
 }
 
 /**
@@ -599,6 +611,23 @@ function enforceBodySizeLimit(result: any): void {
       console.log(`[Gateway] Removed ${removeSet.size} middle tool messages`);
     }
   }
+}
+
+/**
+ * Recursively sanitize all string values in a request body
+ * to remove control characters that break Agnes/vLLM JSON parsing.
+ */
+export function sanitizeRequestBody(obj: any): any {
+  if (typeof obj === 'string') return sanitizeControlChars(obj);
+  if (Array.isArray(obj)) return obj.map(sanitizeRequestBody);
+  if (obj && typeof obj === 'object') {
+    const result: any = {};
+    for (const key of Object.keys(obj)) {
+      result[key] = sanitizeRequestBody(obj[key]);
+    }
+    return result;
+  }
+  return obj;
 }
 
 export function responsesToChatCompletions(body: any): any {
@@ -761,6 +790,27 @@ export function responsesToChatCompletions(body: any): any {
   // Convert previous_response_id context (simplified - just carry forward)
   if (body.previous_response_id) {
     console.log('[Gateway] previous_response_id present but not supported in chat completions format');
+  }
+
+  // Sanitize ALL string content in messages to remove control characters
+  // that break Agnes/vLLM JSON parsing ("Invalid control character" error)
+  for (const msg of result.messages || []) {
+    if (typeof msg.content === 'string') {
+      msg.content = sanitizeControlChars(msg.content);
+    }
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        if (tc.function?.arguments && typeof tc.function.arguments === 'string') {
+          tc.function.arguments = sanitizeControlChars(tc.function.arguments);
+        }
+      }
+    }
+  }
+  // Also sanitize tool descriptions and other string fields
+  for (const tool of result.tools || []) {
+    if (tool.function?.description && typeof tool.function.description === 'string') {
+      tool.function.description = sanitizeControlChars(tool.function.description);
+    }
   }
 
   // Enforce total body size limit to prevent Agnes/vLLM JSON corruption
