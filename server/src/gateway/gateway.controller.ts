@@ -1,4 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res, HttpStatus } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { Request, Response } from 'express';
 import { GatewayService } from './gateway.service';
 import { Provider, RouteConfig, ProxyLog, ApiFormat } from './gateway.types';
@@ -342,7 +345,17 @@ export class GatewayController {
 
     const isStream = upstreamBody.stream === true;
     const responseId = `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    console.log(`[Gateway Proxy] ${ts()} Body size: ${JSON.stringify(upstreamBody).length} bytes | Stream: ${isStream}`);
+    const bodyJsonStr = JSON.stringify(upstreamBody);
+    console.log(`[Gateway Proxy] ${ts()} Body size: ${bodyJsonStr.length} bytes | Stream: ${isStream}`);
+
+    // DEBUG: Save request body to file for inspection
+    const debugBodyPath = path.join(os.tmpdir(), 'anydoor-debug-request.json');
+    fs.writeFileSync(debugBodyPath, bodyJsonStr, 'utf-8');
+    console.log(`[Gateway Proxy] ${ts()} DEBUG body saved to: ${debugBodyPath}`);
+    console.log(`[Gateway Proxy] ${ts()} Body first 300 chars: ${bodyJsonStr.substring(0, 300)}`);
+    // Check for BOM or non-ASCII in first 10 bytes
+    const first10Bytes = Buffer.from(bodyJsonStr.substring(0, 10), 'utf-8');
+    console.log(`[Gateway Proxy] ${ts()} First 10 bytes hex: ${first10Bytes.toString('hex')} | as string: ${bodyJsonStr.substring(0, 10)}`);
 
     try {
       const headers: Record<string, string> = {

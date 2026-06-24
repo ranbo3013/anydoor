@@ -122,8 +122,23 @@ async function curlRequestOnce(
     });
 
     if (options.body) {
-      proc.stdin.write(options.body);
-      proc.stdin.end();
+      const body = options.body.replace(/^\uFEFF/, '');
+      // Write in chunks to handle backpressure on large bodies
+      const CHUNK_SIZE = 65536;
+      let offset = 0;
+      const writeNext = () => {
+        while (offset < body.length) {
+          const chunk = body.substring(offset, offset + CHUNK_SIZE);
+          offset += CHUNK_SIZE;
+          const canContinue = proc.stdin.write(chunk, 'utf-8');
+          if (!canContinue) {
+            proc.stdin.once('drain', writeNext);
+            return;
+          }
+        }
+        proc.stdin.end();
+      };
+      writeNext();
     }
 
     proc.on('close', (code) => {
@@ -232,12 +247,28 @@ export function curlStream(
     callbacks.onClose?.(code || 0);
   });
 
-  // Write body via stdin (explicitly use UTF-8 encoding)
+  // Write body via stdin with proper backpressure handling
   if (options.body) {
     // Remove BOM if present (can cause JSON parsing errors on upstream)
     const body = options.body.replace(/^\uFEFF/, '');
-    proc.stdin.write(body, 'utf-8');
-    proc.stdin.end();
+    // Write in chunks to handle backpressure on large bodies
+    const CHUNK_SIZE = 65536; // 64KB chunks
+    let offset = 0;
+    const writeNext = () => {
+      while (offset < body.length) {
+        const chunk = body.substring(offset, offset + CHUNK_SIZE);
+        offset += CHUNK_SIZE;
+        const canContinue = proc.stdin.write(chunk, 'utf-8');
+        if (!canContinue) {
+          // Buffer full, wait for drain event before continuing
+          proc.stdin.once('drain', writeNext);
+          return;
+        }
+      }
+      // All data written, close stdin
+      proc.stdin.end();
+    };
+    writeNext();
   }
 
   return proc;
