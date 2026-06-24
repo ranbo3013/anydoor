@@ -103,10 +103,19 @@ async function curlRequestOnce(
 
     // Body via stdin
     if (options.body) {
-      args.push('-d', '@-');
+      args.push('--data-binary', '@-');
     }
 
     args.push(url);
+
+    console.log(`[curlRequest] Spawning curl for: ${url}`);
+    console.log(`[curlRequest] Args: ${args.join(' ')}`);
+    if (options.body) {
+      console.log(`[curlRequest] Body length: ${options.body.length} chars`);
+      const bodyBuf = Buffer.from(options.body, 'utf-8');
+      console.log(`[curlRequest] Body HEX (first 30 bytes): ${bodyBuf.slice(0, 30).toString('hex')}`);
+      console.log(`[curlRequest] Body first 200 chars: ${options.body.substring(0, 200)}`);
+    }
 
     const proc = spawn('curl', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
@@ -266,6 +275,7 @@ export function curlStream(
         }
       }
       // All data written, close stdin
+      console.log(`[curlStream] stdin write complete, total offset: ${offset}, body length: ${options.body?.length}`);
       proc.stdin.end();
     };
     writeNext();

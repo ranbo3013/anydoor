@@ -346,13 +346,21 @@ export class GatewayController {
     const isStream = upstreamBody.stream === true;
     const responseId = `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const bodyJsonStr = JSON.stringify(upstreamBody);
+    console.log(`[Gateway Proxy] ${ts()} === REQUEST DEBUG START ===`);
+    console.log(`[Gateway Proxy] ${ts()} Target format: ${targetFormat}`);
+    console.log(`[Gateway Proxy] ${ts()} Upstream URL: ${upstreamUrl}`);
     console.log(`[Gateway Proxy] ${ts()} Body size: ${bodyJsonStr.length} bytes | Stream: ${isStream}`);
+
+    // DEBUG: Hex dump of first 50 bytes
+    const bodyBuf = Buffer.from(bodyJsonStr, 'utf-8');
+    console.log(`[Gateway Proxy] ${ts()} HEX dump (first 50 bytes): ${bodyBuf.slice(0, 50).toString('hex')}`);
+    console.log(`[Gateway Proxy] ${ts()} Body first 500 chars: ${bodyJsonStr.substring(0, 500)}`);
 
     // DEBUG: Save request body to file for inspection
     const debugBodyPath = path.join(os.tmpdir(), 'anydoor-debug-request.json');
     fs.writeFileSync(debugBodyPath, bodyJsonStr, 'utf-8');
     console.log(`[Gateway Proxy] ${ts()} DEBUG body saved to: ${debugBodyPath}`);
-    console.log(`[Gateway Proxy] ${ts()} Body first 300 chars: ${bodyJsonStr.substring(0, 300)}`);
+    console.log(`[Gateway Proxy] ${ts()} === REQUEST DEBUG END ===`);
     // Check for BOM or non-ASCII in first 10 bytes
     const first10Bytes = Buffer.from(bodyJsonStr.substring(0, 10), 'utf-8');
     console.log(`[Gateway Proxy] ${ts()} First 10 bytes hex: ${first10Bytes.toString('hex')} | as string: ${bodyJsonStr.substring(0, 10)}`);
