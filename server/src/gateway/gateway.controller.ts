@@ -327,47 +327,114 @@ export class GatewayController {
     delete noPenalties.frequency_penalty;
     await testVariant('no-penalties', noPenalties);
 
-    // Variant 3: Strip tools
-    const noTools = { ...originalBody };
-    delete noTools.tools;
-    // Also remove tool_calls and tool messages from conversation
-    if (Array.isArray(noTools.messages)) {
-      const toolCallIds = new Set<string>();
-      noTools.messages = noTools.messages.filter((m: any) => {
-        if (m.role === 'assistant' && m.tool_calls) {
-          m.tool_calls.forEach((tc: any) => toolCallIds.add(tc.id));
-          return false; // remove assistant messages with tool_calls
-        }
-        if (m.role === 'tool') return false; // remove tool result messages
+    // Variant 3: Strip tools array BUT keep tool messages in conversation
+    const noToolsArrayOnly = { ...originalBody };
+    delete noToolsArrayOnly.tools;
+    delete noToolsArrayOnly.presence_penalty;
+    delete noToolsArrayOnly.frequency_penalty;
+    delete noToolsArrayOnly.stop;
+    await testVariant('no-tools-array-only', noToolsArrayOnly);
+
+    // Variant 4: Keep tools array BUT strip tool_calls/tool messages from conversation
+    const noToolMessages = { ...originalBody };
+    delete noToolMessages.presence_penalty;
+    delete noToolMessages.frequency_penalty;
+    delete noToolMessages.stop;
+    if (Array.isArray(noToolMessages.messages)) {
+      noToolMessages.messages = noToolMessages.messages.filter((m: any) => {
+        if (m.role === 'assistant' && m.tool_calls) return false;
+        if (m.role === 'tool') return false;
         return true;
       });
     }
-    await testVariant('no-tools', noTools);
+    await testVariant('tools-array-no-tool-msgs', noToolMessages);
 
-    // Variant 4: Only model + messages + stream (minimal)
-    const minimal: any = {
-      model: originalBody.model,
-      messages: originalBody.messages,
-      stream: originalBody.stream ?? false,
-    };
-    await testVariant('minimal', minimal);
+    // Variant 5: Strip both tools array AND tool messages
+    const noToolsAtAll = { ...originalBody };
+    delete noToolsAtAll.tools;
+    delete noToolsAtAll.presence_penalty;
+    delete noToolsAtAll.frequency_penalty;
+    delete noToolsAtAll.stop;
+    if (Array.isArray(noToolsAtAll.messages)) {
+      noToolsAtAll.messages = noToolsAtAll.messages.filter((m: any) => {
+        if (m.role === 'assistant' && m.tool_calls) return false;
+        if (m.role === 'tool') return false;
+        return true;
+      });
+    }
+    await testVariant('no-tools-at-all', noToolsAtAll);
 
-    // Variant 5: Only model + last 2 messages + stream (tiny)
-    const tiny: any = {
+    // Variant 6: model + last N messages (binary search for bad message)
+    const msgs = Array.isArray(originalBody.messages) ? originalBody.messages : [];
+    const halfIdx = Math.floor(msgs.length / 2);
+
+    // First half of messages
+    const firstHalf: any = {
       model: originalBody.model,
-      messages: Array.isArray(originalBody.messages) ? originalBody.messages.slice(-2) : originalBody.messages,
+      messages: msgs.slice(0, halfIdx),
       stream: false,
     };
-    await testVariant('tiny-last2-msgs', tiny);
+    await testVariant(`first-half-msgs (${msgs.slice(0, halfIdx).length})`, firstHalf);
 
-    // Variant 6: model + messages + stream + tools (no penalties, no stop)
-    const withToolsNoPenalties: any = {
+    // Second half of messages
+    const secondHalf: any = {
       model: originalBody.model,
-      messages: originalBody.messages,
-      stream: originalBody.stream ?? false,
+      messages: msgs.slice(halfIdx),
+      stream: false,
     };
-    if (originalBody.tools) withToolsNoPenalties.tools = originalBody.tools;
-    await testVariant('msg-tools-stream-only', withToolsNoPenalties);
+    await testVariant(`second-half-msgs (${msgs.slice(halfIdx).length})`, secondHalf);
+
+    // Variant 7: Replace all tool message content with short placeholder
+    const toolContentScrubbed = { ...originalBody };
+    delete toolContentScrubbed.presence_penalty;
+    delete toolContentScrubbed.frequency_penalty;
+    delete toolContentScrubbed.stop;
+    if (Array.isArray(toolContentScrubbed.messages)) {
+      toolContentScrubbed.messages = toolContentScrubbed.messages.map((m: any) => {
+        if (m.role === 'tool') {
+          return { ...m, content: '[tool result placeholder]' };
+        }
+        if (m.role === 'assistant' && m.tool_calls) {
+          return {
+            ...m,
+            tool_calls: m.tool_calls.map((tc: any) => ({
+              ...tc,
+              function: { ...tc.function, arguments: '{}' },
+            })),
+          };
+        }
+        return m;
+      });
+    }
+    await testVariant('tool-content-scrubbed', toolContentScrubbed);
+
+    // Variant 8: Keep everything but limit each message's content length
+    const truncatedContent = { ...originalBody };
+    delete truncatedContent.presence_penalty;
+    delete truncatedContent.frequency_penalty;
+    delete truncatedContent.stop;
+    const MAX_CONTENT = 500;
+    if (Array.isArray(truncatedContent.messages)) {
+      truncatedContent.messages = truncatedContent.messages.map((m: any) => {
+        const msg = { ...m };
+        if (typeof msg.content === 'string' && msg.content.length > MAX_CONTENT) {
+          msg.content = msg.content.substring(0, MAX_CONTENT) + '...[truncated]';
+        }
+        if (msg.tool_calls) {
+          msg.tool_calls = msg.tool_calls.map((tc: any) => ({
+            ...tc,
+            function: {
+              ...tc.function,
+              arguments: typeof tc.function?.arguments === 'string' && tc.function.arguments.length > MAX_CONTENT
+                ? tc.function.arguments.substring(0, MAX_CONTENT) + '...[truncated]'
+                : tc.function?.arguments,
+            },
+          }));
+        }
+        return msg;
+      });
+    }
+    await testVariant('truncated-content', truncatedContent);
 
     // Find which variants succeeded
     const successLabels = results.filter(r => r.statusCode === 200).map(r => r.label);
